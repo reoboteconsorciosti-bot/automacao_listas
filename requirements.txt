@@ -39,3 +39,4 @@ tzdata
 urllib3
 watchdog
 pydrive2
+streamlit-option-menu
