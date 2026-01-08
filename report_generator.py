@@ -30,8 +30,26 @@ logging.basicConfig(
 )
 
 # --- Persistência dinâmica de consultores e equipes ---
-CONSULTORES_FILE = "consultores.json"
-EQUIPES_FILE = "equipes.json"
+# --- Persistência dinâmica de consultores e equipes ---
+# Configuração de diretório de dados (para persistência em Docker)
+DATA_DIR = os.getenv("DATA_DIR", ".")
+os.makedirs(DATA_DIR, exist_ok=True) # Garante que a pasta exista
+
+CONSULTORES_FILE = os.path.join(DATA_DIR, "consultores.json")
+EQUIPES_FILE = os.path.join(DATA_DIR, "equipes.json")
+
+# Função de inicialização de segurança (Self-healing)
+def init_db():
+    if not os.path.exists(CONSULTORES_FILE):
+        with open(CONSULTORES_FILE, "w", encoding="utf-8") as f:
+            json.dump([], f)
+    
+    if not os.path.exists(EQUIPES_FILE):
+        with open(EQUIPES_FILE, "w", encoding="utf-8") as f:
+            json.dump({"equipes": []}, f)
+
+# Inicializa DB na importação
+init_db()
 
 def carregar_consultores():
     try:
@@ -331,6 +349,12 @@ def aba_divisor_listas():
         if err:
             st.error(err)
             return
+
+       # st.write("### Automação de Lista - Pessoas (Agendor)") # Título redundante se já está na aba
+    
+
+
+        col1_upload, col2_upload = st.columns(2)
 
         st.subheader("Opções de Filtragem e Distribuição")
         
@@ -737,6 +761,7 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
     """Função unificada para gerar arquivos de negócios."""
     with st.spinner("Gerando arquivos de Negócios... Por favor, aguarde."):
         all_generated_files = {}
+        processing_logs = []  # Log list for UI feedback
 
         if source_data is not None: # Modo Handoff ou Upload pré-processado
             for file_name, file_data in source_data.items():
@@ -769,8 +794,9 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                         st.warning(f"Arquivo {file_name_only} não contém todas as colunas essenciais (Nome, Usuário responsável, WhatsApp). Pulando este arquivo.")
                         continue
 
-                    # Limpar e formatar WhatsApp para uso em Data de Conclusão
-                    leads_do_consultor["WhatsApp_Clean"] = leads_do_consultor["WhatsApp"].apply(clean_phone_number)
+
+                    # Limpar e formatar WhatsApp para uso em Data de Conclusão - USANDO PRESERVE_FULL para evitar cortes incorretos
+                    leads_do_consultor["WhatsApp_Clean"] = leads_do_consultor["WhatsApp"].apply(lambda x: clean_phone_number(x, preserve_full=True))
                     leads_do_consultor["WhatsApp_Clean"] = leads_do_consultor["WhatsApp_Clean"].apply(lambda x: str(x) if pd.notna(x) else "")
 
                     num_leads_consultor = len(leads_do_consultor)
@@ -789,8 +815,23 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                                 nome_pessoa = row_lead.get("Nome", "")
                                 usuario_responsavel = row_lead.get("Usuário responsável", "")
                                 whatsapp_lead = row_lead.get("WhatsApp_Clean", "")
-                                # Garantir DDI +55 no campo usado para Data de conclusão
-                                whatsapp_lead_full = f"+55{whatsapp_lead}" if whatsapp_lead else ""
+                                
+                                # Lógica inteligente de DDI
+                                whatsapp_lead_full = ""
+                                if whatsapp_lead:
+                                    # Se não houver números suficientes (menos de 10), provavelmente é inválido, mas mantemos o que tem
+                                    if len(whatsapp_lead) < 10:
+                                        processing_logs.append(f"⚠️ [Handoff] {nome_pessoa}: Número curto detectado ({whatsapp_lead}).")
+                                        whatsapp_lead_full = f"+55{whatsapp_lead}" # Default behavior
+                                    
+                                    # Se já começar com 55 e for longo (>=12 dígitos), assume que já tem DDI (55 + 2 DDD + 8/9 num)
+                                    elif whatsapp_lead.startswith("55") and len(whatsapp_lead) >= 12:
+                                        whatsapp_lead_full = f"+{whatsapp_lead}"
+                                    else:
+                                        # Caso padrão: Adiciona +55
+                                        whatsapp_lead_full = f"+55{whatsapp_lead}"
+                                else:
+                                    processing_logs.append(f"❌ [Handoff] {nome_pessoa}: Sem WhatsApp válido. Campo Data de Conclusão ficará vazio.")
 
                                 # Formatar Título do negócio usando a data do arquivo (current_date)
                                 mes_ano = current_date.strftime('%m/%y')
@@ -850,8 +891,15 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
 
             # Preparar o DataFrame
             df_renamed = df_raw.rename(columns={col_mapping["Nome"]: "Nome", col_mapping["WhatsApp"]: "WhatsApp"})
-            df_renamed["WhatsApp"] = df_renamed["WhatsApp"].apply(clean_phone_number)
+            # Usar preserve_full=True para não cortar dígitos inadvertidamente
+            df_renamed["WhatsApp"] = df_renamed["WhatsApp"].apply(lambda x: clean_phone_number(x, preserve_full=True))
+            
+            # Count dropped rows for logging
+            initial_count = len(df_renamed)
             df_renamed.dropna(subset=["WhatsApp"], inplace=True)
+            dropped_count = initial_count - len(df_renamed)
+            if dropped_count > 0:
+                processing_logs.append(f"⚠️ [Upload] {dropped_count} leads removidos pois a coluna WhatsApp estava vazia ou inválida após limpeza.")
 
             if df_renamed.empty:
                 st.warning("Após a filtragem, não restaram leads para distribuir.")
@@ -873,79 +921,121 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
             file_counter = 1
 
             for i, consultor in enumerate(effective_consultores):
-                # Colunas da planilha de Negócios
+                # Se houver mais consultores do que lotes (ex: 3 consultores, 2 leads), 
+                # os ultimos nao recebem nada. O array_split garante divisao justa.
+                if i >= len(leads_por_consultor_dist):
+                    break
+
+                df_consultor = leads_por_consultor_dist[i].copy()
+                total_leads = len(df_consultor)
+                leads_processados = 0
+                
+                # Colunas da planilha de Negócios (com nova coluna de status)
                 colunas_negocios = [
                     "Título do negócio", "Empresa relacionada", "Pessoa relacionada",
                     "Usuário responsável", "Data de início", "Data de conclusão",
                     "Valor Total", "Funil", "Etapa", "Status", "Motivo de perda",
-                    "Descrição do motivo de perda", "Ranking", "Descrição", "Produtos e Serviços"
+                    "Descrição do motivo de perda", "Ranking", "Descrição", "Produtos e Serviços",
+                    "Status Telefone"
                 ]
 
+                # Reinicia data para cada consultor ? (Baseado na lógica anterior sim)
                 current_date = start_date_negocios
                 file_counter = 1
 
-                for consultor in effective_consultores:
-                    df_consultor = df_renamed.copy()
-                    total_leads = len(df_consultor)
-                    leads_processados = 0
-                    while leads_processados < total_leads:
-                        inicio_lote = leads_processados
-                        fim_lote = min(leads_processados + negocios_por_consultor, total_leads)
-                        df_lote_negocios = df_consultor.iloc[inicio_lote:fim_lote].copy()
-                        if not df_lote_negocios.empty:
-                            dados_negocios = []
-                            for _, row_lead in df_lote_negocios.iterrows():
-                                nome_pessoa = row_lead.get("Nome", "")
-                                usuario_responsavel = consultor.lower().replace(' ', '.')
-                                whatsapp_lead = row_lead.get("WhatsApp", "")
-                                cleaned = clean_phone_number(whatsapp_lead)
-                                whatsapp_lead_clean = str(cleaned) if pd.notna(cleaned) else ""
-                                # Garantir DDI +55 no campo usado para Data de conclusão
-                                whatsapp_lead_full = f"+55{whatsapp_lead_clean}" if whatsapp_lead_clean else ""
+                while leads_processados < total_leads:
+                    inicio_lote = leads_processados
+                    fim_lote = min(leads_processados + negocios_por_consultor, total_leads)
+                    df_lote_negocios = df_consultor.iloc[inicio_lote:fim_lote].copy()
+                    
+                    if not df_lote_negocios.empty:
+                        dados_negocios = []
+                        for _, row_lead in df_lote_negocios.iterrows():
+                            nome_pessoa = row_lead.get("Nome", "")
+                            usuario_responsavel = consultor.lower().replace(' ', '.')
+                            whatsapp_lead = row_lead.get("WhatsApp", "")
+                            
+                            # Clean once
+                            cleaned = clean_phone_number(whatsapp_lead, preserve_full=True)
+                            whatsapp_lead_clean = str(cleaned) if pd.notna(cleaned) else ""
+                            
+                            # Lógica inteligente de DDI para Upload Cru + Flagging
+                            whatsapp_lead_full = ""
+                            status_telefone = "OK" # Default
 
-                                # Use the file's current_date for month/year in title
-                                mes_ano = current_date.strftime('%m/%y')
-                                nicho_formatado_titulo = nicho_principal.upper()
-                                if sufixo_localidade:
-                                    nicho_formatado_titulo += f" {sufixo_localidade.upper()}"
-                                titulo_negocio = f"{mes_ano} - RB - {nicho_formatado_titulo} - {nome_pessoa}/ESPs"
+                            if not whatsapp_lead_clean:
+                                status_telefone = "VAZIO"
+                                processing_logs.append(f"❌ [Upload] {nome_pessoa}: WhatsApp vazio após limpeza.")
+                            else:
+                                raw_len = len(whatsapp_lead_clean)
+                                
+                                if raw_len < 10:
+                                    # Número curto - mantemos mas avisamos
+                                    whatsapp_lead_full = f"+55{whatsapp_lead_clean}"
+                                    status_telefone = "INVÁLIDO (Curto)"
+                                    processing_logs.append(f"⚠️ [Upload] {nome_pessoa}: Número curto ({whatsapp_lead_clean}).")
+                                
+                                elif whatsapp_lead_clean.startswith("55") and raw_len >= 12:
+                                    # Já tem DDI
+                                    whatsapp_lead_full = f"+{whatsapp_lead_clean}"
+                                    # status ok
+                                
+                                elif raw_len == 10 or raw_len == 11:
+                                    # Caso padrão DDD+Num
+                                    whatsapp_lead_full = f"+55{whatsapp_lead_clean}"
+                                    status_telefone = "CORRIGIDO (+55)"
+                                    
+                                else:
+                                    # Outros casos (ex: muito longo sem 55, ou curto mas tecnicamente >10?)
+                                    whatsapp_lead_full = f"+55{whatsapp_lead_clean}"
+                                    status_telefone = "INCERTO"
 
-                                linha_negocio = {
-                                    "Título do negócio": titulo_negocio,
-                                    "Empresa relacionada": "",
-                                    "Pessoa relacionada": nome_pessoa,
-                                    "Usuário responsável": usuario_responsavel,
-                                    "Data de início": current_date.strftime('%d/%m/%Y'),
-                                    "Data de conclusão": whatsapp_lead_full,
-                                    "Valor Total": "",
-                                    "Funil": "Funil de Vendas",
-                                    "Etapa": "Prospecção",
-                                    "Status": "Em andamento",
-                                    "Motivo de perda": "",
-                                    "Descrição do motivo de perda": "",
-                                    "Ranking": "",
-                                    "Descrição": "",
-                                    "Produtos e Serviços": ""
-                                }
-                                dados_negocios.append(linha_negocio)
-                            df_final_negocios = pd.DataFrame(dados_negocios, columns=colunas_negocios)
 
-                            output_excel_negocios = io.BytesIO()
-                            with pd.ExcelWriter(output_excel_negocios, engine='openpyxl') as writer:
-                                df_final_negocios.to_excel(writer, index=False)
-                            output_excel_negocios.seek(0)
-
-                            primeiro_nome_consultor = consultor.split(' ')[0].upper()
-                            nome_arquivo_negocios = f"NEGOCIOS_{primeiro_nome_consultor}_{nicho_principal.upper()}"
+                            # Use the file's current_date for month/year in title
+                            mes_ano = current_date.strftime('%m/%y')
+                            nicho_formatado_titulo = nicho_principal.upper()
                             if sufixo_localidade:
-                                nome_arquivo_negocios += f"_{sufixo_localidade.upper()}"
-                            nome_arquivo_negocios += f"_{current_date.strftime('%d-%m-%Y')}.xlsx"
+                                nicho_formatado_titulo += f" {sufixo_localidade.upper()}"
+                            titulo_negocio = f"{mes_ano} - RB - {nicho_formatado_titulo} - {nome_pessoa}/ESPs"
 
-                            all_generated_files[nome_arquivo_negocios] = output_excel_negocios.getvalue()
+                            linha_negocio = {
+                                "Título do negócio": titulo_negocio,
+                                "Empresa relacionada": "",
+                                "Pessoa relacionada": nome_pessoa,
+                                "Usuário responsável": usuario_responsavel,
+                                "Data de início": current_date.strftime('%d/%m/%Y'),
+                                "Data de conclusão": whatsapp_lead_full,
+                                "Valor Total": "",
+                                "Funil": "Funil de Vendas",
+                                "Etapa": "Prospecção",
+                                "Status": "Em andamento",
+                                "Motivo de perda": "",
+                                "Descrição do motivo de perda": "",
+                                "Ranking": "",
+                                "Descrição": "",
+                                "Produtos e Serviços": "",
+                                "Status Telefone": status_telefone # New Column
+                            }
+                            dados_negocios.append(linha_negocio)
+                        
+                        df_final_negocios = pd.DataFrame(dados_negocios, columns=colunas_negocios)
 
-                            leads_processados += len(df_lote_negocios)
-                            current_date = proximo_dia_util(current_date)
-                            file_counter += 1
+                        output_excel_negocios = io.BytesIO()
+                        with pd.ExcelWriter(output_excel_negocios, engine='openpyxl') as writer:
+                            df_final_negocios.to_excel(writer, index=False)
+                        output_excel_negocios.seek(0)
+
+                        primeiro_nome_consultor = consultor.split(' ')[0].upper()
+                        nome_arquivo_negocios = f"NEGOCIOS_{primeiro_nome_consultor}_{nicho_principal.upper()}"
+                        if sufixo_localidade:
+                            nome_arquivo_negocios += f"_{sufixo_localidade.upper()}"
+                        nome_arquivo_negocios += f"_{current_date.strftime('%d-%m-%Y')}.xlsx"
+
+                        all_generated_files[nome_arquivo_negocios] = output_excel_negocios.getvalue()
+
+                        leads_processados += len(df_lote_negocios)
+                        current_date = proximo_dia_util(current_date)
+                        file_counter += 1
             zip_buffer = io.BytesIO()
             with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
                 for file_name_in_zip, file_data in all_generated_files.items():
@@ -977,6 +1067,17 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
             # Reset session state flags after successful generation
             st.session_state.handoff_active = False
             st.session_state.source_for_negocios = 'upload'
+
+            # Exibir Logs de Processamento
+            if processing_logs:
+                with st.expander("Logs de Processamento (Avisos e Erros)", expanded=True):
+                    for log_msg in processing_logs:
+                        if "❌" in log_msg:
+                            st.error(log_msg)
+                        else:
+                            st.warning(log_msg)
+                    st.caption("Verifique se os números marcados como curtos ou inválidos estão corretos na planilha original.")
+                
         if not all_generated_files:
             st.warning("Nenhum arquivo de Negócios foi gerado. Verifique os arquivos de entrada e as configurações.")
 
@@ -984,6 +1085,8 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
 
 def aba_automacao_pessoas_agendor():
     st.header("Automação Pessoas Agendor")
+    # st.write("### Automação de Lista - Pessoas (Agendor)") 
+
     st.info("Faça o upload de um arquivo de lista para iniciar a geração de pessoas. Obrigatório que o arquivo contenha as colunas 'NOME' e 'Whats'.")
 
     uploaded_file = st.file_uploader("Faça upload do arquivo XLSX com os leads", type=["xlsx"], key="geracao_pessoas_uploader")
@@ -993,6 +1096,12 @@ def aba_automacao_pessoas_agendor():
         if err:
             st.error(err)
             return
+            
+        df_leads_cols = df_raw_leads.columns.tolist() # Ensure this is defined for later use
+
+        # Guarda o arquivo gerado para uso posterior (ex: Handoff)
+        if 'generated_pessoas_files' not in st.session_state:
+            st.session_state.generated_pessoas_files = {}
 
         st.subheader("Opções de Filtragem e Distribuição")
 
@@ -1019,14 +1128,48 @@ def aba_automacao_pessoas_agendor():
 
         st.subheader("Configurações Adicionais para Agendor")
         default_cargo = st.text_input("Cargo Padrão", value="Lead Automovel", help="Cargo a ser atribuído aos leads no Agendor.")
-        default_descricao = st.text_area("Descrição Padrão", value="", help="Descrição adicional para os leads no Agendor.")
-        default_uf = st.text_input("UF Padrão", value="MS", max_chars=2, help="UF padrão para os leads, se não mapeado.")
+        
+        # --- Helper para criar Toggle estilo "Segmented Control" (Pílula) ---
+        def create_toggle(label, options, default, key):
+            try:
+                # Tenta usar st.segmented_control (Novo no Streamlit 1.39+)
+                # Ele retorna None se nada for selecionado, mas com 'default' garantimos o valor
+                sel = st.segmented_control(label, options, default=default, key=key)
+                return sel if sel else default # Garante retorno
+            except AttributeError:
+                # Fallback para st.radio antigo se a versão for anterior
+                return st.radio(label, options, horizontal=True, index=options.index(default), key=key)
+
+        # Toggle for Descrição - Estilo Pílula Horizontal
+        st.write("**Configuração da Descrição**")
+        desc_mode = create_toggle("Fonte da Descrição:", ["Valor Fixo", "Usar Coluna"], default="Valor Fixo", key="desc_mode_toggle")
+        
+        default_descricao = ""
+        col_descricao = None
+        
+        if desc_mode == "Valor Fixo":
+            default_descricao = st.text_area("Digite a Descrição Padrão", value="", help="Esta descrição será usada para todos os leads.")
+        else:
+            col_descricao = st.selectbox("Selecione a coluna de Descrição do arquivo:", options=[""] + df_leads_cols, key="col_descricao_select")
+
+        # Toggle for UF - Estilo Pílula Horizontal
+        st.write("**Configuração da UF (Estado)**")
+        uf_mode = create_toggle("Fonte da UF:", ["Valor Fixo", "Usar Coluna"], default="Valor Fixo", key="uf_mode_toggle")
+        
+        default_uf = "MS"
+        col_uf = None
+        
+        if uf_mode == "Valor Fixo":
+            default_uf = st.text_input("Digite a UF Padrão", value="MS", max_chars=2, help="UF padrão para os leads.")
+        else:
+            col_uf = st.selectbox("Selecione a coluna de UF do arquivo:", options=[""] + df_leads_cols, key="col_uf_select")
+            
         nicho_valor = st.text_input("Nicho (para nome do arquivo)", value="GERAL", help="Valor do nicho para o nome do arquivo de exportação (ex: AUTOMOVEIS, IMOVEIS).")
 
         st.subheader("Mapeamento de Colunas")
         st.info("Selecione as colunas do seu arquivo que correspondem aos campos esperados.")
 
-        df_leads_cols = df_raw_leads.columns.tolist()
+
         
         # Suggested column names for pre-selection
         SUGGESTED_COLUMN_NAMES_AGENDOR = {
@@ -1085,13 +1228,13 @@ def aba_automacao_pessoas_agendor():
             )
             user_col_mapping[col] = selected_col
 
-        # Se houver apenas 1 consultor efetivo, por padrão ele receberá todos os leads.
-        # Apresentamos uma opção para forçar a divisão em lotes mesmo com 1 consultor.
+        # Lógica para input de leads por consultor e divisão forçada
+        force_split = False
         if len(effective_consultores) == 1:
             force_split = st.checkbox("Forçar divisão em lotes mesmo com 1 consultor", value=False, key="force_split_single")
             leads_por_consultor = st.number_input("Número de leads por consultor", min_value=1, value=50, disabled=not force_split)
             if not force_split:
-                st.info("Apenas 1 consultor selecionado — por padrão ele receberá todos os leads. Marque a opção para dividir em lotes.")
+                st.info("Apenas 1 consultor selecionado — por padrão ele receberá todos os leads. Marque a opção acima para dividir em lotes.")
         else:
             leads_por_consultor = st.number_input("Número de leads por consultor", min_value=1, value=50)
 
@@ -1170,7 +1313,8 @@ def aba_automacao_pessoas_agendor():
 
                     # If exactly one consultant is selected and the user did not request forced splitting,
                     # create a single file containing all leads for that consultant.
-                    if len(effective_consultores) == 1 and not st.session_state.get('force_split_single', False):
+                    # Use the local variable 'force_split' which is safely initialized above.
+                    if len(effective_consultores) == 1 and not force_split:
                         consultor = effective_consultores[0]
                         dados_finais = []
                         consultor_formatado = consultor.lower().replace(' ', '.')
@@ -1180,9 +1324,30 @@ def aba_automacao_pessoas_agendor():
                             whatsapp_str = f"+55{str(whatsapp_val).strip()}" if whatsapp_val and pd.notna(whatsapp_val) and str(whatsapp_val).strip() else ""
                             celular_val = row.get("CEL")
                             celular_str = str(celular_val) if celular_val and pd.notna(celular_val) else ""
-                            descricao_val = default_descricao.strip() if default_descricao and str(default_descricao).strip() else None
+                            
+                            
+                            # Lógica para Descrição
+                            descricao_val = ""
+                            if desc_mode == "Valor Fixo":
+                                descricao_val = default_descricao.strip()
+                            elif col_descricao and col_descricao in row:
+                                val_col = row.get(col_descricao)
+                                descricao_val = str(val_col).strip() if pd.notna(val_col) else ""
+                            
+                            # Fallback original se estiver vazio
                             if not descricao_val:
                                 descricao_val = row.get("Razao Social") or row.get("Fantasia") or row.get("Empresa") or ""
+
+                            # Lógica para UF
+                            uf_val = ""
+                            if uf_mode == "Valor Fixo":
+                                uf_val = default_uf
+                            elif col_uf and col_uf in row:
+                                val_uf = row.get(col_uf)
+                                uf_val = str(val_uf).strip()[0:2].upper() if pd.notna(val_uf) else ""
+                            
+                            if not uf_val: # Fallback safe
+                                uf_val = "MS"
                             cep_val = ""
                             if "CEP" in row and pd.notna(row.get("CEP")):
                                 cep_val = normalize_cep(row.get("CEP"))
@@ -1196,7 +1361,7 @@ def aba_automacao_pessoas_agendor():
                                 "Descrição": descricao_val,
                                 "WhatsApp": whatsapp_str,
                                 "Celular": celular_str,
-                                "Estado": default_uf,
+                                "Estado": uf_val,
                                 "Cidade": row.get("Cidade", ""),
                                 "Bairro": row.get("Bairro", ""),
                                 "Rua": row.get("Rua", ""),
@@ -1241,9 +1406,30 @@ def aba_automacao_pessoas_agendor():
                                         whatsapp_str = f"+55{str(whatsapp_val).strip()}" if whatsapp_val and pd.notna(whatsapp_val) and str(whatsapp_val).strip() else ""
                                         celular_val = row.get("CEL")
                                         celular_str = str(celular_val) if celular_val and pd.notna(celular_val) else ""
-                                        descricao_val = default_descricao.strip() if default_descricao and str(default_descricao).strip() else None
+                                        
+                                        
+                                        # Lógica para Descrição
+                                        descricao_val = ""
+                                        if desc_mode == "Valor Fixo":
+                                            descricao_val = default_descricao.strip()
+                                        elif col_descricao and col_descricao in row:
+                                            val_col = row.get(col_descricao)
+                                            descricao_val = str(val_col).strip() if pd.notna(val_col) else ""
+                                        
+                                        # Fallback original
                                         if not descricao_val:
                                             descricao_val = row.get("Razao Social") or row.get("Fantasia") or row.get("Empresa") or ""
+                                            
+                                        # Lógica para UF
+                                        uf_val = ""
+                                        if uf_mode == "Valor Fixo":
+                                            uf_val = default_uf
+                                        elif col_uf and col_uf in row:
+                                            val_uf = row.get(col_uf)
+                                            uf_val = str(val_uf).strip()[0:2].upper() if pd.notna(val_uf) else ""
+                                        
+                                        if not uf_val:
+                                            uf_val = "MS"
                                         cep_val = ""
                                         if "CEP" in row and pd.notna(row.get("CEP")):
                                             cep_val = normalize_cep(row.get("CEP"))
@@ -1257,7 +1443,7 @@ def aba_automacao_pessoas_agendor():
                                             "Descrição": descricao_val,
                                             "WhatsApp": whatsapp_str,
                                             "Celular": celular_str,
-                                            "Estado": default_uf,
+                                            "Estado": uf_val,
                                             "Cidade": row.get("Cidade", ""),
                                             "Bairro": row.get("Bairro", ""),
                                             "Rua": row.get("Rua", ""),
