@@ -9,21 +9,7 @@
     },
     {
       "nome": "Equipe Camila",
-      "consultores": [
-        "Kássio Gomes",
-        "Felipe Teles",
-        "Renata Dessbesell",
-        "Jonas Maidana",
-        "Lucas Roques"
-      ]
-    },
-    {
-      "nome": "Equipe Fernando",
-      "consultores": [
-        "Raphael Lucas",
-        "Edson Alves",
-        "Jessica Spinola"
-      ]
+      "consultores": []
     }
   ]
 }
