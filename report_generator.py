@@ -1746,6 +1746,84 @@ def aba_gerenciar_consultores():
                         except Exception as e:
                             st.error(f"Erro ao renomear equipe: {e}")
 
+    st.markdown("---")
+    with st.expander("🛠️ Backup & Restauração de Dados (Migração)", expanded=False):
+        st.info("Use esta área para baixar seus dados atuais ou restaurar um backup (ex: migrar dados locais para o servidor).")
+        st.warning("⚠️ CUIDADO: Restaurar um arquivo SUBSTITUI TODOS os dados atuais por aqueles do arquivo enviado.")
+        
+        bc1, bc2 = st.columns(2)
+        
+        # --- Consultores ---
+        with bc1:
+            st.subheader("Consultores")
+            
+            # Botão de Download (Backup)
+            # Consultores é apenas uma lista de dicts
+            consultores_json_str = json.dumps(consultores, indent=2, ensure_ascii=False)
+            st.download_button(
+                label="⬇️ Baixar Backup Consultores",
+                data=consultores_json_str,
+                file_name="consultores.json",
+                mime="application/json",
+                key="btn_down_cons"
+            )
+            
+            # Botão de Upload (Restore)
+            uploaded_cons = st.file_uploader("Restaurar consultores.json", type=["json"], key="restore_cons")
+            if uploaded_cons:
+                try:
+                    data = json.load(uploaded_cons)
+                    if isinstance(data, list):
+                        # Validação básica
+                        if data and "consultor" not in data[0]:
+                            st.error("Formato do JSON parece incorreto (faltam chaves 'consultor').")
+                        else:
+                            salvar_consultores(data)
+                            st.success("✅ Consultores restaurados com sucesso!")
+                            st.rerun()
+                    else:
+                        st.error("O arquivo deve conter uma lista de consultores (JSON array).")
+                except Exception as e:
+                    st.error(f"Erro ao processar arquivo: {e}")
+
+        # --- Equipes ---
+        with bc2:
+            st.subheader("Equipes")
+            
+            # Botão de Download (Backup)
+            # Equipes precisa estar envelopado em {"equipes": [...]}
+            equipes_wrapper = {"equipes": equipes}
+            equipes_json_str = json.dumps(equipes_wrapper, indent=2, ensure_ascii=False)
+            st.download_button(
+                label="⬇️ Baixar Backup Equipes",
+                data=equipes_json_str,
+                file_name="equipes.json",
+                mime="application/json",
+                key="btn_down_eq"
+            )
+            
+            # Botão de Upload (Restore)
+            uploaded_eq = st.file_uploader("Restaurar equipes.json", type=["json"], key="restore_eq")
+            if uploaded_eq:
+                try:
+                    data = json.load(uploaded_eq)
+                    # Verifica se é o formato wrapped {"equipes": []} ou raw list []
+                    lista_final = None
+                    
+                    if isinstance(data, dict) and "equipes" in data:
+                        lista_final = data["equipes"]
+                    elif isinstance(data, list):
+                        lista_final = data # Suporte a lista pura se o usuário tiver
+                    
+                    if lista_final is not None:
+                         salvar_equipes(lista_final)
+                         st.success("✅ Equipes restauradas com sucesso!")
+                         st.rerun()
+                    else:
+                        st.error("Formato inválido. Esperado objeto {'equipes': [...]} ou lista.")
+                except Exception as e:
+                    st.error(f"Erro ao processar arquivo: {e}")
+
 
 def main():
     st.set_page_config(page_title="Automação de Listas", layout="wide")
