@@ -3,6 +3,7 @@ import unicodedata
 import logging
 import numpy as np
 from utils import best_match_column
+from utils import format_phone_for_whatsapp_business
 
 # Ordem final das colunas de saída
 FIXED_OUTPUT_ORDER = [
@@ -262,17 +263,20 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
     logging.info("DataFrame após tratamento de telefones dedicados:")
     logging.info(df_processed.head())
 
-    # --- Aplica a formatação final dos números de celular ---
+    # --- Aplica a formatação final dos números de celular (Centralizada) ---
+    # Agora usamos format_phone_for_whatsapp_business que retorna (formatted, status)
+    # Pegamos apenas o [0] (formatted). Se for VAZIO, fica string vazia.
+    
     if "SOCIO1Celular1" in essential_cols:
-        df_processed["SOCIO1Celular1"] = df_processed["SOCIO1Celular1"].apply(lambda x: _format_phone_with_ddd(x, include_country_code=True))
+        df_processed["SOCIO1Celular1"] = df_processed["SOCIO1Celular1"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
     if "SOCIO1Celular2" in essential_cols:
-        df_processed["SOCIO1Celular2"] = df_processed["SOCIO1Celular2"].apply(lambda x: _format_phone_with_ddd(x, include_country_code=False))
+        df_processed["SOCIO1Celular2"] = df_processed["SOCIO1Celular2"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
     if "Whats" in essential_cols:
-        df_processed["Whats"] = df_processed["Whats"].apply(lambda x: _format_phone_with_ddd(x, include_country_code=True))
+        df_processed["Whats"] = df_processed["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
     if "CEL" in essential_cols:
-        df_processed["CEL"] = df_processed["CEL"].apply(lambda x: _format_phone_with_ddd(x, include_country_code=False))
+        df_processed["CEL"] = df_processed["CEL"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
 
-    logging.info("DataFrame após formatação final dos celulares:")
+    logging.info("DataFrame após formatação final dos celulares (Centralizada):")
     logging.info(df_processed.head())
 
     # --- Lógica de Fallback para Sócios (apenas para Assertiva-like) ---

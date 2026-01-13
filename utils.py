@@ -181,9 +181,8 @@ def format_phone_for_whatsapp_business(phone_str, default_country_code="+55"):
     status = "OK"
 
     if raw_len < 10:
-        # Número curto - mantemos mas avisamos
-        formatted_num = f"{default_country_code}{phone_clean}"
-        status = "INVÁLIDO (Curto)"
+        # Número curto (sem DDD) - Descartar conforme pedido do usuário
+        return "", "VAZIO"
     
     elif phone_clean.startswith("55") and raw_len >= 12:
         # Já tem DDI (55 + 2 DDD + 8/9 num = 12/13 digitos)
@@ -196,8 +195,12 @@ def format_phone_for_whatsapp_business(phone_str, default_country_code="+55"):
         status = "CORRIGIDO (+55)"
         
     else:
-        # Outros casos (ex: muito longo sem 55)
-        formatted_num = f"{default_country_code}{phone_clean}"
+        # Outros casos (ex: muito longo sem 55) mas com pelo menos 10 digitos
+        # Tenta garantir o +55 se não tiver
+        if not phone_clean.startswith("55"):
+             formatted_num = f"{default_country_code}{phone_clean}"
+        else:
+             formatted_num = f"+{phone_clean}"
         status = "INCERTO"
 
     return formatted_num, status
