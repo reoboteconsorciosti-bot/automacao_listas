@@ -95,13 +95,13 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
     MAPPING = {
         "Razao": ["Razao", "RAZAO_SOCIAL", "NOME/RAZAO_SOCIAL", "Fantasia"],
         "SOCIO1Nome": ["SOCIO1Nome", "NOME"],
-        "Logradouro": ["Logradouro", "FULL_LOGRADOURO", "Endereco", "ENDERECO_COMPLETO"],
+        "Logradouro": ["Logradouro", "FULL-LOGRADOURO", "FULL_LOGRADOURO", "Endereco", "ENDERECO_COMPLETO", "TIPO-LOGRADOURO"],
         "Numero": ["Numero", "NUMERO"],
         "Bairro": ["Bairro", "BAIRRO"],
         "Cidade": ["Cidade", "CIDADE"],
         "UF": ["UF", "ESTADO"],
         "CNPJ": ["CNPJ", "CPF/CNPJ"],
-        "Whats": ["Whats", "WhatsApp", "Telefone", "Celular", "Contato"],
+        "Whats": ["Whats", "WhatsApp", "Telefone", "Celular", "Contato", "POSSUI-WHATSAPP"],
         "CEL": ["CEL", "Celular", "Telefone", "Whats", "WhatsApp"],
         "DDD": ["DDD", "TELEFONE_DDD", "FONE_DDD"],
         "FONE": ["FONE", "TELEFONE_NUMERO", "FONE_NUMERO", "NUMERO_TELEFONE"]
