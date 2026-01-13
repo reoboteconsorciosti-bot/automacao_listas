@@ -150,13 +150,15 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
     
     # Inicializa colunas de celular como string para evitar FutureWarnings
     # Apenas inicializa se elas estiverem nas essential_cols
-    if "SOCIO1Celular1" in essential_cols:
+    # Inicializa colunas de celular como string para evitar FutureWarnings
+    # Apenas inicializa se elas NÃO existirem ainda
+    if "SOCIO1Celular1" in essential_cols and "SOCIO1Celular1" not in df_processed.columns:
         df_processed["SOCIO1Celular1"] = ""
-    if "SOCIO1Celular2" in essential_cols:
+    if "SOCIO1Celular2" in essential_cols and "SOCIO1Celular2" not in df_processed.columns:
         df_processed["SOCIO1Celular2"] = ""
-    if "Whats" in essential_cols:
+    if "Whats" in essential_cols and "Whats" not in df_processed.columns:
         df_processed["Whats"] = ""
-    if "CEL" in essential_cols:
+    if "CEL" in essential_cols and "CEL" not in df_processed.columns:
         df_processed["CEL"] = ""
 
     # --- Lógica dedicada para SOCIO1Celular1 e SOCIO1Celular2 / DDD/FONE/Whats/CEL ---
@@ -332,7 +334,13 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
             df_processed[col] = df_processed[col].fillna('').astype(str).str.strip()
 
     # Seleciona e ordena as colunas para a saída final
-    final_cols = [col for col in FIXED_OUTPUT_ORDER if col in df_processed.columns]
+    # Seleciona e ordena as colunas para a saída final
+    # Garante que todas as colunas de FIXED_OUTPUT_ORDER existam no final, mesmo que vazias
+    for col in FIXED_OUTPUT_ORDER:
+        if col not in df_processed.columns:
+            df_processed[col] = "" # Preenche com vazio se não existir
+
+    final_cols = [col for col in FIXED_OUTPUT_ORDER] # Usa a ordem fixa completa
     df_final = df_processed[final_cols].copy()
 
     # Ordena o resultado final
