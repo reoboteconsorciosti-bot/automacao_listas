@@ -2,6 +2,7 @@ import pandas as pd
 import unicodedata
 import logging
 import numpy as np
+from utils import best_match_column
 
 # Ordem final das colunas de saída
 FIXED_OUTPUT_ORDER = [
@@ -129,6 +130,7 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
         # Ensure the order is maintained (base first, then numbered)
         potential_source_cols.sort(key=lambda x: (len(x), x))
 
+        # Tenta encontrar a coluna diretamente
         for source_col in potential_source_cols:
             if source_col in df.columns:
                 col_data = df[source_col].astype(str).str.strip()
@@ -138,9 +140,21 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
                     df_processed[std_col] = df[source_col]
                     found_valid_col = True
                     logging.info(f"Coluna '{std_col}' mapeada de '{source_col}' com dados.")
-                    break # Pega a primeira correspondência com dados e vai para a próxima coluna padrão
-                else:
-                    logging.warning(f"Coluna '{source_col}' encontrada para '{std_col}' mas está vazia. Tentando outras opções...")
+                    break 
+        
+        # Se não encontrou diretamente, tenta fuzzy match com as opções
+        if not found_valid_col:
+            # Reúne todos os candidatos (source_options + potential extras)
+            candidates = source_options + potential_source_cols
+            best_col = best_match_column(df.columns.tolist(), candidates, min_score=60)
+            
+            if best_col:
+                 col_data = df[best_col].astype(str).str.strip()
+                 if col_data.any():
+                    df_processed[std_col] = df[best_col]
+                    found_valid_col = True
+                    logging.info(f"Coluna '{std_col}' mapeada de '{best_col}' via fuzzy match.")
+        
         if not found_valid_col:
             logging.warning(f"Nenhuma coluna válida encontrada para '{std_col}' entre as opções: {potential_source_cols}. Definindo como NaN.")
             df_processed[std_col] = np.nan
