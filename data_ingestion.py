@@ -130,17 +130,35 @@ def load_data(file_input):
         df_cols_normalized = {normalize_colname(col) for col in df.columns}
         print(f"DEBUG: Colunas do DataFrame normalizadas para detecção: {df_cols_normalized}")
 
-        # Verifica se é Assertiva
-        is_assertiva = all(normalize_colname(col) in df_cols_normalized for col in ASSERTIVA_ESSENTIAL_COLS)
-        if is_assertiva:
+        # --- Heurística Robusta de Detecção ---
+        
+        # 1. Lemit
+        # Sinal Forte: Coluna 'POSSUI-WHATSAPP' (exclusiva do Lemit)
+        has_possui_whatsapp = normalize_colname("POSSUI-WHATSAPP") in df_cols_normalized
+        
+        # Sinal Flexível: NOME + Pelo menos 1 campo de telefone típico do Lemit
+        has_nome = normalize_colname("NOME") in df_cols_normalized
+        lemit_phone_markers = ["Whats", "CEL", "FONE", "DDD", "Telefone", "Celular"]
+        has_lemit_phone = any(normalize_colname(c) in df_cols_normalized for c in lemit_phone_markers)
+
+        is_lemit_robust = has_possui_whatsapp or (has_nome and has_lemit_phone)
+
+        # 2. Assertiva
+        # Requer Razao (ou Nome) + quantidade mínima de outras colunas chaves
+        has_razao = normalize_colname("Razao") in df_cols_normalized
+        assertiva_markers = [c for c in ASSERTIVA_ESSENTIAL_COLS if c not in ["Razao", "SOCIO1Nome"]] # Remove nomes para verificar estrutura
+        present_assertiva_markers = sum(1 for c in assertiva_markers if normalize_colname(c) in df_cols_normalized)
+        
+        is_assertiva_robust = (has_razao or has_nome) and present_assertiva_markers >= 3
+
+        if is_lemit_robust:
+            structure_type = "Lemit"
+            print("DEBUG: Detectado como Lemit (Heurística Robusta)")
+        elif is_assertiva_robust:
             structure_type = "Assertiva"
+            print("DEBUG: Detectado como Assertiva (Heurística Robusta)")
         else:
-            # Verifica se é Lemit
-            is_lemit = all(normalize_colname(col) in df_cols_normalized for col in LEMIT_ESSENTIAL_COLS)
-            if is_lemit:
-                structure_type = "Lemit"
-            else:
-                structure_type = "Desconhecida" # Ou outro valor padrão
+             structure_type = "Desconhecida"
 
     print(f"DEBUG: load_data final return: df shape: {df.shape if not df.empty else 'empty'}, structure_type: {structure_type}, err: {err}")
     return df, structure_type, err
