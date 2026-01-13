@@ -133,18 +133,74 @@ def determine_localidade(user_col_mapping, df_lote, default="CG"):
     return default
 
 
-def gerar_excel_em_memoria(df_lote, consultor, data):
+def generate_excel_buffer(df, **kwargs):
+    """
+    Gera um buffer Excel em memória para um DataFrame.
+    Aceita kwargs que são passados para to_excel (ex: sheet_name).
+    O índice é False por padrão, mas pode ser sobrescrito via kwargs se necessário (embora implementado aqui fixo como index=False na chamada, poderiamos mudar).
+    Na verdade, vamos garantir index=False e passar o resto.
+    """
     output = io.BytesIO()
     try:
+        # Se 'index' estiver em kwargs, usamos, caso contrário False
+        index_arg = kwargs.pop('index', False)
+        
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df_lote.to_excel(writer, index=False)
+            df.to_excel(writer, index=index_arg, **kwargs)
         output.seek(0)
         return output
     except Exception:
         return io.BytesIO()
-import io
-import difflib
-from datetime import timedelta
+
+def format_phone_for_whatsapp_business(phone_str, default_country_code="+55"):
+    """
+    Formata um número de telefone para o padrão WhatsApp Business (com DDI).
+    Retorna uma tupla: (numero_formatado, status_msg)
+    
+    Status Msg pode ser: "OK", "VAZIO", "INVÁLIDO (Curto)", "CORRIGIDO (+55)", "INCERTO"
+    """
+    if pd.isna(phone_str) or str(phone_str).strip() == "":
+        return "", "VAZIO"
+
+    # Assume que a limpeza básica (apenas dígitos) já foi feita ou fazemos aqui
+    # Mas para manter consistência com o resto do código que usa clean_phone_number antes, 
+    # vamos assumir que phone_str pode vir sujo ou limpo.
+    # Vamos limpar apenas para garantir.
+    cleaned = clean_phone_number(phone_str, preserve_full=True)
+    if pd.isna(cleaned) or str(cleaned) == "":
+        # Tenta digits only direto caso clean_phone_number falhe por ser curto demais mas não vazio
+        digits = ''.join(filter(str.isdigit, str(phone_str)))
+        if not digits:
+             return "", "VAZIO"
+        cleaned = digits
+
+    phone_clean = str(cleaned)
+    raw_len = len(phone_clean)
+    
+    formatted_num = ""
+    status = "OK"
+
+    if raw_len < 10:
+        # Número curto - mantemos mas avisamos
+        formatted_num = f"{default_country_code}{phone_clean}"
+        status = "INVÁLIDO (Curto)"
+    
+    elif phone_clean.startswith("55") and raw_len >= 12:
+        # Já tem DDI (55 + 2 DDD + 8/9 num = 12/13 digitos)
+        formatted_num = f"+{phone_clean}"
+        status = "OK"
+    
+    elif raw_len == 10 or raw_len == 11:
+        # Caso padrão DDD+Num (10 ou 11 digitos)
+        formatted_num = f"{default_country_code}{phone_clean}"
+        status = "CORRIGIDO (+55)"
+        
+    else:
+        # Outros casos (ex: muito longo sem 55)
+        formatted_num = f"{default_country_code}{phone_clean}"
+        status = "INCERTO"
+
+    return formatted_num, status
 
 
 def clean_phone_number(number_str, preserve_full=False):

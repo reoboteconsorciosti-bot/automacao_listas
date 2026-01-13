@@ -89,7 +89,8 @@ from utils import (
     best_match_column,
     proximo_dia_util,
     determine_localidade,
-    gerar_excel_em_memoria,
+    generate_excel_buffer,
+    format_phone_for_whatsapp_business,
 )
 
 
@@ -310,10 +311,7 @@ def aba_higienizacao():
             with col2:
                 if st.button("Gerar e Baixar Excel (XLSX)"):
                     with st.spinner("Gerando Excel..."):
-                        output = io.BytesIO()
-                        st.session_state.df_export.to_excel(output, index=False)
-                        output.seek(0)
-                        st.session_state.excel_buffer = output
+                        st.session_state.excel_buffer = generate_excel_buffer(st.session_state.df_export)
                         st.session_state.excel_filename = final_output_filename + ".xlsx"
 
             if 'pdf_buffer' in st.session_state and st.session_state.pdf_buffer:
@@ -544,7 +542,7 @@ def aba_divisor_listas():
                                         df_lote[col] = "☐   ☐"
                                 
                                 if not df_lote.empty:
-                                    excel_buffer = gerar_excel_em_memoria(df_lote, consultor, data_atual)
+                                    excel_buffer = generate_excel_buffer(df_lote)
                                     
                                     primeiro_nome = consultor.split(' ')[0]
                                     data_formatada_nome = data_atual.strftime('%d_%m_%Y')
@@ -816,22 +814,13 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                                 usuario_responsavel = row_lead.get("Usuário responsável", "")
                                 whatsapp_lead = row_lead.get("WhatsApp_Clean", "")
                                 
-                                # Lógica inteligente de DDI
-                                whatsapp_lead_full = ""
-                                if whatsapp_lead:
-                                    # Se não houver números suficientes (menos de 10), provavelmente é inválido, mas mantemos o que tem
-                                    if len(whatsapp_lead) < 10:
-                                        processing_logs.append(f"⚠️ [Handoff] {nome_pessoa}: Número curto detectado ({whatsapp_lead}).")
-                                        whatsapp_lead_full = f"+55{whatsapp_lead}" # Default behavior
-                                    
-                                    # Se já começar com 55 e for longo (>=12 dígitos), assume que já tem DDI (55 + 2 DDD + 8/9 num)
-                                    elif whatsapp_lead.startswith("55") and len(whatsapp_lead) >= 12:
-                                        whatsapp_lead_full = f"+{whatsapp_lead}"
-                                    else:
-                                        # Caso padrão: Adiciona +55
-                                        whatsapp_lead_full = f"+55{whatsapp_lead}"
-                                else:
+                                # Lógica inteligente de DDI (Centralizada)
+                                whatsapp_lead_full, status_phone = format_phone_for_whatsapp_business(whatsapp_lead)
+                                
+                                if status_phone == "VAZIO":
                                     processing_logs.append(f"❌ [Handoff] {nome_pessoa}: Sem WhatsApp válido. Campo Data de Conclusão ficará vazio.")
+                                elif status_phone == "INVÁLIDO (Curto)":
+                                    processing_logs.append(f"⚠️ [Handoff] {nome_pessoa}: Número curto detectado ({whatsapp_lead}).")
 
                                 # Formatar Título do negócio usando a data do arquivo (current_date)
                                 mes_ano = current_date.strftime('%m/%y')
@@ -862,10 +851,7 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                             
                             df_final_negocios = pd.DataFrame(dados_negocios, columns=colunas_negocios)
 
-                            output_excel_negocios = io.BytesIO()
-                            with pd.ExcelWriter(output_excel_negocios, engine='openpyxl') as writer:
-                                df_final_negocios.to_excel(writer, index=False)
-                            output_excel_negocios.seek(0)
+                            output_excel_negocios = generate_excel_buffer(df_final_negocios)
 
                             # Nome do arquivo de negócios
                             nome_arquivo_negocios = f"NEGOCIOS_{consultor_nome_arquivo.upper()}_{nicho_principal.upper()}"
@@ -959,36 +945,13 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                             cleaned = clean_phone_number(whatsapp_lead, preserve_full=True)
                             whatsapp_lead_clean = str(cleaned) if pd.notna(cleaned) else ""
                             
-                            # Lógica inteligente de DDI para Upload Cru + Flagging
-                            whatsapp_lead_full = ""
-                            status_telefone = "OK" # Default
+                            # Lógica inteligente de DDI para Upload Cru + Flagging (Centralizada)
+                            whatsapp_lead_full, status_telefone = format_phone_for_whatsapp_business(whatsapp_lead_clean)
 
-                            if not whatsapp_lead_clean:
-                                status_telefone = "VAZIO"
+                            if status_telefone == "VAZIO":
                                 processing_logs.append(f"❌ [Upload] {nome_pessoa}: WhatsApp vazio após limpeza.")
-                            else:
-                                raw_len = len(whatsapp_lead_clean)
-                                
-                                if raw_len < 10:
-                                    # Número curto - mantemos mas avisamos
-                                    whatsapp_lead_full = f"+55{whatsapp_lead_clean}"
-                                    status_telefone = "INVÁLIDO (Curto)"
-                                    processing_logs.append(f"⚠️ [Upload] {nome_pessoa}: Número curto ({whatsapp_lead_clean}).")
-                                
-                                elif whatsapp_lead_clean.startswith("55") and raw_len >= 12:
-                                    # Já tem DDI
-                                    whatsapp_lead_full = f"+{whatsapp_lead_clean}"
-                                    # status ok
-                                
-                                elif raw_len == 10 or raw_len == 11:
-                                    # Caso padrão DDD+Num
-                                    whatsapp_lead_full = f"+55{whatsapp_lead_clean}"
-                                    status_telefone = "CORRIGIDO (+55)"
-                                    
-                                else:
-                                    # Outros casos (ex: muito longo sem 55, ou curto mas tecnicamente >10?)
-                                    whatsapp_lead_full = f"+55{whatsapp_lead_clean}"
-                                    status_telefone = "INCERTO"
+                            elif status_telefone == "INVÁLIDO (Curto)":
+                                processing_logs.append(f"⚠️ [Upload] {nome_pessoa}: Número curto ({whatsapp_lead_clean}).")
 
 
                             # Use the file's current_date for month/year in title
@@ -1020,10 +983,7 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                         
                         df_final_negocios = pd.DataFrame(dados_negocios, columns=colunas_negocios)
 
-                        output_excel_negocios = io.BytesIO()
-                        with pd.ExcelWriter(output_excel_negocios, engine='openpyxl') as writer:
-                            df_final_negocios.to_excel(writer, index=False)
-                        output_excel_negocios.seek(0)
+                        output_excel_negocios = generate_excel_buffer(df_final_negocios)
 
                         primeiro_nome_consultor = consultor.split(' ')[0].upper()
                         nome_arquivo_negocios = f"NEGOCIOS_{primeiro_nome_consultor}_{nicho_principal.upper()}"
@@ -1372,10 +1332,7 @@ def aba_automacao_pessoas_agendor():
                             dados_finais.append(linha)
 
                         df_final_consultor = pd.DataFrame(dados_finais, columns=colunas_output)
-                        output_excel_consultor = io.BytesIO()
-                        with pd.ExcelWriter(output_excel_consultor, engine='openpyxl') as writer:
-                            df_final_consultor.to_excel(writer, index=False, sheet_name='Pessoas')
-                        output_excel_consultor.seek(0)
+                        output_excel_consultor = generate_excel_buffer(df_final_consultor, sheet_name='Pessoas')
 
                         # Determine localidade for filename (safer logic)
                         localidade = determine_localidade(user_col_mapping, df_lote, default="CG")
@@ -1455,10 +1412,7 @@ def aba_automacao_pessoas_agendor():
 
                                     df_final_consultor = pd.DataFrame(dados_finais, columns=colunas_output)
 
-                                    output_excel_consultor = io.BytesIO()
-                                    with pd.ExcelWriter(output_excel_consultor, engine='openpyxl') as writer:
-                                        df_final_consultor.to_excel(writer, index=False, sheet_name='Pessoas')
-                                    output_excel_consultor.seek(0)
+                                    output_excel_consultor = generate_excel_buffer(df_final_consultor, sheet_name='Pessoas')
 
                                     # Determine localidade for filename (safer logic)
                                     localidade = determine_localidade(user_col_mapping, df_lote, default="CG")
