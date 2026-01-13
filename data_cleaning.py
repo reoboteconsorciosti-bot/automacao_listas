@@ -6,7 +6,8 @@ import numpy as np
 # Ordem final das colunas de saída
 FIXED_OUTPUT_ORDER = [
     "Razao", "Logradouro", "Numero", "Bairro", "Cidade", "UF",
-    "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2"
+    "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2",
+    "NOME", "Whats", "CEL"
 ]
 
 def normalize_colname(name):
