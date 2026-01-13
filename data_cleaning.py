@@ -11,6 +11,13 @@ FIXED_OUTPUT_ORDER = [
     "NOME", "Whats", "CEL"
 ]
 
+# Colunas para extração completa (Superset de tudo que queremos buscar)
+FULL_EXTRACTION_COLS = [
+    "Razao", "Logradouro", "Numero", "Bairro", "Cidade", "UF", "CEP", "CNPJ",
+    "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2",
+    "NOME", "Whats", "CEL", "DDD", "FONE"
+]
+
 def normalize_colname(name):
     """Remove acentos, espaços e converte para minúsculas."""
     nfkd = unicodedata.normalize('NFKD', str(name))

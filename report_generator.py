@@ -74,7 +74,7 @@ def salvar_equipes(equipes):
         json.dump({"equipes": equipes}, f, ensure_ascii=False, indent=2)
 
 from data_ingestion import load_data, ASSERTIVA_ESSENTIAL_COLS, LEMIT_ESSENTIAL_COLS
-from data_cleaning import clean_and_filter_data
+from data_cleaning import clean_and_filter_data, FULL_EXTRACTION_COLS
 from create_pdf import create_pdf_robust
 
 # --- Configurações e Lógica para o Divisor de Listas ---
@@ -255,20 +255,20 @@ def aba_higienizacao():
 
             st.success(f"Planilha {st.session_state.structure_type} Detectada")
 
-            # Determina as colunas essenciais com base na estrutura detectada
-            essential_cols_to_pass = [] # Inicializa com uma lista vazia
+            # Determina as colunas essenciais com base na estrutura detectada (para LOG)
             if st.session_state.structure_type == "Assertiva":
-                essential_cols_to_pass = ASSERTIVA_ESSENTIAL_COLS
+                st.info(f"Usando colunas de extração Assertiva.")
             elif st.session_state.structure_type == "Lemit":
-                essential_cols_to_pass = LEMIT_ESSENTIAL_COLS
+                 st.info(f"Usando colunas de extração Lemit.")
             else:
                 st.error("Estrutura de planilha desconhecida. Não é possível prosseguir com a higienização.")
                 st.session_state.df_clean = pd.DataFrame() # Garante que df_clean seja um DataFrame vazio
                 st.session_state.missing_cols = [] # Garante que missing_cols seja uma lista vazia
                 return # Sai da função para evitar o erro de desempacotamento
 
-            # Chama clean_and_filter_data com as colunas essenciais
-            st.session_state.df_clean, st.session_state.missing_cols, _ = clean_and_filter_data(df_raw, essential_cols=essential_cols_to_pass)
+            # Chama clean_and_filter_data com FULL_EXTRACTION_COLS para garantir que tentamos pegar tudo que é possível
+            # independentemente de ser Lemit ou Assertiva (pois o mapeamento resolve as diferenças)
+            st.session_state.df_clean, st.session_state.missing_cols, _ = clean_and_filter_data(df_raw, essential_cols=FULL_EXTRACTION_COLS)
 
             if st.session_state.df_clean.empty:
                 st.warning("Atenção: Após a limpeza e filtragem, nenhum dado restou. Verifique os filtros aplicados e o mapeamento das colunas.")
