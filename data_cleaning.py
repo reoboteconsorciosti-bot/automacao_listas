@@ -6,9 +6,9 @@ from utils import best_match_column
 from utils import format_phone_for_whatsapp_business
 
 # Ordem final das colunas de saída
+# Ordem final das colunas de saída
 FIXED_OUTPUT_ORDER = [
     "Razao", "Logradouro", "Numero", "Bairro", "Cidade", "UF",
-    "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2",
     "NOME", "Whats", "CEL"
 ]
 
@@ -338,27 +338,33 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
 
     # --- Bloco de Limpeza e Seleção (Unificado) ---
     
-    # Garante que todas as colunas essenciais existam
-    for col in essential_cols:
-        if col not in df_processed.columns:
-            df_processed[col] = ""
+    # --- Unificação de Colunas (SOCIO -> NOME/Whats/CEL) ---
+    # Se existirem colunas de SOCIO preenchidas, movemos para NOME/Whats/CEL se estes estiverem vazios
+    # Prioridade: O que já está em NOME/Whats/CEL ganha, se não, pega do SOCIO.
+    
+    if "SOCIO1Nome" in df_processed.columns:
+        df_processed["NOME"] = df_processed["NOME"].fillna(df_processed["SOCIO1Nome"])
+    
+    if "SOCIO1Celular1" in df_processed.columns:
+        df_processed["Whats"] = df_processed["Whats"].fillna(df_processed["SOCIO1Celular1"])
+        
+    if "SOCIO1Celular2" in df_processed.columns:
+        df_processed["CEL"] = df_processed["CEL"].fillna(df_processed["SOCIO1Celular2"])
 
-    # Remove duplicatas com base na prioridade
-    if "CNPJ" in df_processed.columns and bool(df_processed["CNPJ"].notna().any()):
-        df_processed.drop_duplicates(subset=["CNPJ"], keep='first', inplace=True)
-    elif "SOCIO1Celular1" in df_processed.columns and bool(df_processed["SOCIO1Celular1"].notna().any()):
-        df_processed.drop_duplicates(subset=["SOCIO1Celular1"], keep='first', inplace=True)
-    elif "Whats" in df_processed.columns and bool(df_processed["Whats"].notna().any()):
+    # Remove duplicates com base APENAS no Whats final formatado
+    # Primeiro remove vazios
+    df_processed = df_processed[df_processed["Whats"] != ""]
+    df_processed = df_processed[df_processed["Whats"].notna()]
+    
+    # Remove duplicatas de telefone
+    if not df_processed.empty:
         df_processed.drop_duplicates(subset=["Whats"], keep='first', inplace=True)
-    elif "Razao" in df_processed.columns and "Logradouro" in df_processed.columns:
-        df_processed.drop_duplicates(subset=["Razao", "Logradouro"], keep='first', inplace=True)
 
     # Limpeza final das colunas de texto
-    for col in ["Razao", "Logradouro", "Bairro", "Cidade", "UF", "SOCIO1Nome", "NOME", "Whats", "CEL"]:
+    for col in ["Razao", "Logradouro", "Bairro", "Cidade", "UF", "NOME", "Whats", "CEL"]:
         if col in df_processed.columns:
             df_processed[col] = df_processed[col].fillna('').astype(str).str.strip()
 
-    # Seleciona e ordena as colunas para a saída final
     # Seleciona e ordena as colunas para a saída final
     # Garante que todas as colunas de FIXED_OUTPUT_ORDER existam no final, mesmo que vazias
     for col in FIXED_OUTPUT_ORDER:
