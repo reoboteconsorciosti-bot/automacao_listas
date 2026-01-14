@@ -36,9 +36,11 @@ def map_essential_columns(df, essential_cols):
 
 def _clean_phone_number(number_str):
     """Limpa e valida um número de telefone, retornando NaN se inválido."""
-    if pd.isna(number_str) or number_str == '':
-        return ""
+    if pd.isna(number_str) or str(number_str).strip() == '':
+        return np.nan
     cleaned = ''.join(filter(str.isdigit, str(number_str)))
+    if not cleaned:
+        return np.nan
     return cleaned
 
 def _format_phone_with_ddd(phone_str, include_country_code=False):
@@ -211,7 +213,7 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
                     combined_phone = ddd_val + fone_val
                     cleaned_phone = _clean_phone_number(combined_phone)
                     logging.debug(f"[DEBUG] Combinado DDD+FONE: {combined_phone}, Limpo: {cleaned_phone}")
-                    if pd.notna(cleaned_phone):
+                    if pd.notna(cleaned_phone) and cleaned_phone != "":
                         valid_phones.append(cleaned_phone)
                 
                 # Tenta combinar DDD com CEL
@@ -340,8 +342,13 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
     
     # --- Unificação de Colunas (SOCIO -> NOME/Whats/CEL) ---
     # Se existirem colunas de SOCIO preenchidas, movemos para NOME/Whats/CEL se estes estiverem vazios
-    # Prioridade: O que já está em NOME/Whats/CEL ganha, se não, pega do SOCIO.
     
+    # Converte strings vazias para NaN para o fillna funcionar
+    cols_to_fix = ["NOME", "Whats", "CEL", "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2"]
+    for col in cols_to_fix:
+        if col in df_processed.columns:
+            df_processed[col] = df_processed[col].replace(r'^\s*$', np.nan, regex=True)
+
     if "SOCIO1Nome" in df_processed.columns:
         df_processed["NOME"] = df_processed["NOME"].fillna(df_processed["SOCIO1Nome"])
     
