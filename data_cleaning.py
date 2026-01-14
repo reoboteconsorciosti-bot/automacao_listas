@@ -2,6 +2,7 @@ import pandas as pd
 import unicodedata
 import logging
 import numpy as np
+from typing import List, Dict, Any, Union, Tuple
 from utils import best_match_column
 from utils import format_phone_for_whatsapp_business
 
@@ -19,12 +20,14 @@ FULL_EXTRACTION_COLS = [
     "NOME", "Whats", "CEL", "DDD", "FONE"
 ]
 
-def normalize_colname(name):
+def normalize_colname(name: Any) -> str:
     """Remove acentos, espaços e converte para minúsculas."""
+    if name is None:
+        return ""
     nfkd = unicodedata.normalize('NFKD', str(name))
     return ''.join([c for c in nfkd if not unicodedata.combining(c)]).replace(' ', '').lower()
 
-def map_essential_columns(df, essential_cols):
+def map_essential_columns(df: pd.DataFrame, essential_cols: List[str]) -> Dict[str, str]:
     """Mapeia nomes de colunas normalizados para os nomes originais."""
     norm_to_orig = {normalize_colname(col): col for col in df.columns}
     found = {}
@@ -34,7 +37,7 @@ def map_essential_columns(df, essential_cols):
             found[col] = norm_to_orig[norm]
     return found
 
-def _clean_phone_number(number_str):
+def _clean_phone_number(number_str: Any) -> Union[str, float]:
     """Limpa e valida um número de telefone, retornando NaN se inválido."""
     if pd.isna(number_str) or str(number_str).strip() == '':
         return np.nan
@@ -88,7 +91,7 @@ def identify_structure(df, ASSERTIVA_ESSENTIAL_COLS, LEMIT_ESSENTIAL_COLS):
     else:
         return "Assertiva"
 
-def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
+def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[pd.DataFrame, List[str], str]:
     if df.empty:
         logging.warning("DataFrame de entrada está vazio.")
         print("DEBUG: clean_and_filter_data returning (empty df, empty missing, Unknown structure) - df.empty path")
@@ -177,13 +180,18 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
     # Inicializa colunas de celular como string para evitar FutureWarnings
     # Apenas inicializa se elas NÃO existirem ainda
     if "SOCIO1Celular1" in essential_cols and "SOCIO1Celular1" not in df_processed.columns:
-        df_processed["SOCIO1Celular1"] = ""
+        df_processed["SOCIO1Celular1"] = pd.Series(dtype='object')
     if "SOCIO1Celular2" in essential_cols and "SOCIO1Celular2" not in df_processed.columns:
-        df_processed["SOCIO1Celular2"] = ""
+        df_processed["SOCIO1Celular2"] = pd.Series(dtype='object')
     if "Whats" in essential_cols and "Whats" not in df_processed.columns:
-        df_processed["Whats"] = ""
+        df_processed["Whats"] = pd.Series(dtype='object')
     if "CEL" in essential_cols and "CEL" not in df_processed.columns:
-        df_processed["CEL"] = ""
+        df_processed["CEL"] = pd.Series(dtype='object')
+        
+    # Garantir que colunas existentes sejam object para evitar warnings
+    for c in ["SOCIO1Celular1", "SOCIO1Celular2", "Whats", "CEL"]:
+        if c in df_processed.columns:
+             df_processed[c] = df_processed[c].astype('object')
 
     # --- Lógica dedicada para SOCIO1Celular1 e SOCIO1Celular2 / DDD/FONE/Whats/CEL ---
 
@@ -221,19 +229,19 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
                     combined_phone = ddd_val + cel_val
                     cleaned_phone = _clean_phone_number(combined_phone)
                     logging.debug(f"[DEBUG] Combinado DDD+CEL: {combined_phone}, Limpo: {cleaned_phone}")
-                    if pd.notna(cleaned_phone):
+                    if pd.notna(cleaned_phone) and cleaned_phone != "":
                         valid_phones.append(cleaned_phone)
 
                 # Se FONE ou CEL vierem sozinhos e forem válidos (já com DDD)
                 if not ddd_val and fone_val:
                     cleaned_phone = _clean_phone_number(fone_val)
                     logging.debug(f"[DEBUG] FONE sozinho: {fone_val}, Limpo: {cleaned_phone}")
-                    if pd.notna(cleaned_phone):
+                    if pd.notna(cleaned_phone) and cleaned_phone != "":
                         valid_phones.append(cleaned_phone)
                 if not ddd_val and cel_val:
                     cleaned_phone = _clean_phone_number(cel_val)
                     logging.debug(f"[DEBUG] CEL sozinho: {cel_val}, Limpo: {cleaned_phone}")
-                    if pd.notna(cleaned_phone):
+                    if pd.notna(cleaned_phone) and cleaned_phone != "":
                         valid_phones.append(cleaned_phone)
 
                 if len(valid_phones) >= 2: # Já encontrou 2, pode parar de procurar para esta linha
@@ -311,12 +319,14 @@ def clean_and_filter_data(df, essential_cols, distancia_padrao="100 km"):
 
                 if not s1_valid:
                     if s2_valid:
-                        df_processed.at[index, s1_col] = s2_val
-                        logging.info(f"[FALLBACK] {s1_col} inválido para linha {index}. Usando {s2_col} ({s2_val}).")
-                        socio1_has_any_valid_data = True
+                        if s1_col in df_processed.columns:
+                            df_processed.at[index, s1_col] = s2_val
+                            logging.info(f"[FALLBACK] {s1_col} inválido para linha {index}. Usando {s2_col} ({s2_val}).")
+                            socio1_has_any_valid_data = True
                     else:
-                        df_processed.at[index, s1_col] = np.nan # Marcar como NaN se nenhum for válido
-                        logging.warning(f"[FALLBACK] {s1_col} e {s2_col} inválidos/ausentes para linha {index}. Definido {s1_col} como NaN.")
+                        if s1_col in df_processed.columns:
+                            df_processed.at[index, s1_col] = np.nan # Marcar como NaN se nenhum for válido
+                            logging.warning(f"[FALLBACK] {s1_col} e {s2_col} inválidos/ausentes para linha {index}. Definido {s1_col} como NaN.")
                 else:
                     socio1_has_any_valid_data = True
             
