@@ -152,23 +152,22 @@ def generate_excel_buffer(df, **kwargs):
     except Exception:
         return io.BytesIO()
 
-def format_phone_for_whatsapp_business(phone_str, default_country_code="+55"):
+def format_phone_for_whatsapp_business(phone_str, default_country_code="+55", include_country_code=True):
     """
     Formata um número de telefone para o padrão WhatsApp Business (com DDI).
     Retorna uma tupla: (numero_formatado, status_msg)
     
     Status Msg pode ser: "OK", "VAZIO", "INVÁLIDO (Curto)", "CORRIGIDO (+55)", "INCERTO"
+    
+    Args:
+        include_country_code: Se True, garante o +55. Se False, remove ou não adiciona.
     """
     if pd.isna(phone_str) or str(phone_str).strip() == "":
         return "", "VAZIO"
 
-    # Assume que a limpeza básica (apenas dígitos) já foi feita ou fazemos aqui
-    # Mas para manter consistência com o resto do código que usa clean_phone_number antes, 
-    # vamos assumir que phone_str pode vir sujo ou limpo.
-    # Vamos limpar apenas para garantir.
+    # Limpeza básica
     cleaned = clean_phone_number(phone_str, preserve_full=True)
     if pd.isna(cleaned) or str(cleaned) == "":
-        # Tenta digits only direto caso clean_phone_number falhe por ser curto demais mas não vazio
         digits = ''.join(filter(str.isdigit, str(phone_str)))
         if not digits:
              return "", "VAZIO"
@@ -181,10 +180,22 @@ def format_phone_for_whatsapp_business(phone_str, default_country_code="+55"):
     status = "OK"
 
     if raw_len < 10:
-        # Número curto (sem DDD) - Descartar conforme pedido do usuário
+        # Número curto (sem DDD) - Descartar
         return "", "VAZIO"
     
-    elif phone_clean.startswith("55") and raw_len >= 12:
+    # Lógica se tiver país e quisermos remover
+    if not include_country_code:
+        # Se começar com 55 e tiver 12 ou 13 dígitos, remove o 55
+        if phone_clean.startswith("55") and raw_len >= 12:
+             formatted_num = phone_clean[2:]
+             status = "OK (Sem +55)"
+        else:
+             formatted_num = phone_clean
+             status = "OK (Sem +55)"
+        return formatted_num, status
+
+    # Lógica com país (Padrão)
+    if phone_clean.startswith("55") and raw_len >= 12:
         # Já tem DDI (55 + 2 DDD + 8/9 num = 12/13 digitos)
         formatted_num = f"+{phone_clean}"
         status = "OK"

@@ -278,13 +278,13 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
     # Pegamos apenas o [0] (formatted). Se for VAZIO, fica string vazia.
     
     if "SOCIO1Celular1" in essential_cols:
-        df_processed["SOCIO1Celular1"] = df_processed["SOCIO1Celular1"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
+        df_processed["SOCIO1Celular1"] = df_processed["SOCIO1Celular1"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
     if "SOCIO1Celular2" in essential_cols:
-        df_processed["SOCIO1Celular2"] = df_processed["SOCIO1Celular2"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
+        df_processed["SOCIO1Celular2"] = df_processed["SOCIO1Celular2"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
     if "Whats" in essential_cols:
-        df_processed["Whats"] = df_processed["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
+        df_processed["Whats"] = df_processed["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=True)[0])
     if "CEL" in essential_cols:
-        df_processed["CEL"] = df_processed["CEL"].apply(lambda x: format_phone_for_whatsapp_business(x)[0])
+        df_processed["CEL"] = df_processed["CEL"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
 
     logging.info("DataFrame após formatação final dos celulares (Centralizada):")
     logging.info(df_processed.head())
