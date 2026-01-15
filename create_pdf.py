@@ -74,7 +74,7 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
         "Numero": 12,      
         "Bairro": 25,      # Aumentado de 22
         "Cidade": 22,      # Aumentado de 20
-        "UF": 8,           
+        "UF": 9,           
         "NOME": 63,        # Aumentado de 55
         "Whats": 29,       
         "CEL": 28,         # Ajustado para caber no limite
