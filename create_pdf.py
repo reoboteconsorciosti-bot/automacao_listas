@@ -69,17 +69,17 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
     col_widths = {}
     # Adicionadas larguras específicas para colunas da higienização
     TARGET_WIDTHS = {
-        "NOME": 75, "Whats": 30, "CEL": 30, "1º Contato": 22, "2º Contato": 22,
-        "3º Contato": 22, "Atend. Lig.(S/N)": 33, "Visita Marc.(S/N)": 33,
-        "Numero": 15,      # Largura reduzida
-        "UF": 12,            # Largura aumentada
-        "Logradouro": 40,  # Largura aumentada
-        "SOCIO1Nome": 50,  # Largura ajustada para nomes de sócios
-        "Razao": 60,       # Largura aumentada
-        "Bairro": 25,      # Largura reduzida
-        "Cidade": 20,      # Largura reduzida
-        "SOCIO1Celular1": 35, # Largura aumentada
-        "SOCIO1Celular2": 35, # Largura aumentada
+        "Razao": 45,       # Reduzido de 60
+        "Logradouro": 38,  # Reduzido de 40
+        "Numero": 12,      # Reduzido de 15
+        "Bairro": 22,      # Reduzido de 25
+        "Cidade": 20,
+        "UF": 8,           # Reduzido de 12 (Pedido do usuário)
+        "NOME": 55,        # Reduzido de 75
+        "Whats": 29,       
+        "CEL": 29,         # Ajustados para caber na página
+        "1º Contato": 22, "2º Contato": 22, "3º Contato": 22, 
+        "Atend. Lig.(S/N)": 33, "Visita Marc.(S/N)": 33
     }
     fixed_width_cols = {h: TARGET_WIDTHS[h] for h in headers if h in TARGET_WIDTHS}
     total_fixed_width = sum(fixed_width_cols.values())
