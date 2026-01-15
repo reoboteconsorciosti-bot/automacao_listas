@@ -69,15 +69,15 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
     col_widths = {}
     # Adicionadas larguras específicas para colunas da higienização
     TARGET_WIDTHS = {
-        "Razao": 45,       # Reduzido de 60
-        "Logradouro": 38,  # Reduzido de 40
-        "Numero": 12,      # Reduzido de 15
-        "Bairro": 22,      # Reduzido de 25
-        "Cidade": 20,
-        "UF": 8,           # Reduzido de 12 (Pedido do usuário)
-        "NOME": 55,        # Reduzido de 75
+        "Razao": 55,       # Aumentado de 45
+        "Logradouro": 45,  # Aumentado de 38
+        "Numero": 12,      
+        "Bairro": 25,      # Aumentado de 22
+        "Cidade": 22,      # Aumentado de 20
+        "UF": 8,           
+        "NOME": 63,        # Aumentado de 55
         "Whats": 29,       
-        "CEL": 29,         # Ajustados para caber na página
+        "CEL": 28,         # Ajustado para caber no limite
         "1º Contato": 22, "2º Contato": 22, "3º Contato": 22, 
         "Atend. Lig.(S/N)": 33, "Visita Marc.(S/N)": 33
     }
@@ -96,9 +96,11 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
         col_widths[header] = width
     # --- FIM DA LÓGICA DE LARGURA ---
 
-    pdf.set_line_width(0.3)
+    pdf.set_line_width(0.1) # Bordas mais finas
     pdf.set_x(margin)
-    pdf.set_fill_color(220, 220, 220) # Cinza claro para o cabeçalho
+    # Cabeçalho Azul Escuro com texto Branco (Estilo Premium)
+    pdf.set_fill_color(22, 54, 92) # Azul escuro profissional
+    pdf.set_text_color(255, 255, 255) # Texto branco no cabeçalho
     
     # --- FORMATAÇÃO DO CABEÇALHO ---
     try:
@@ -107,8 +109,12 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
         pdf.set_font('Arial', 'B', 10)
 
     for header in headers:
-        pdf.cell(col_widths.get(header, 10), 8, str(header), 1, 0, 'C', 1) # Altura do cabeçalho reduzida
+        # Border 0 no header também para ficar clean, ou apenas fundo preenchido
+        pdf.cell(col_widths.get(header, 10), 8, str(header), 0, 0, 'C', 1) 
     pdf.ln()
+
+    # Reset text color for body
+    pdf.set_text_color(0, 0, 0)
 
     # --- FORMATAÇÃO DO CORPO ---
     try:
@@ -116,7 +122,7 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
     except RuntimeError:
         pdf.set_font('Arial', '', 9)
 
-    pdf.set_fill_color(245, 245, 245)
+    pdf.set_fill_color(225, 235, 250) # Azul bem claro para as linhas alternadas (Zebra Blue)
     fill = False
     for _, row in df.iterrows():
         pdf.set_x(margin)
@@ -134,7 +140,7 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
                 while pdf.get_string_width(cell_text) > col_width - 4:
                     cell_text = cell_text[:-1]
 
-            pdf.cell(col_width, 6, cell_text, 1, 0, 'L', fill) # Alinhamento à esquerda
+            pdf.cell(col_width, 6, cell_text, 0, 0, 'L', fill) # Border 0 (sem bordas), apenas fill
         pdf.ln()
     
     # --- GERAÇÃO DE SAÍDA ROBUSTA (VIA ARQUIVO TEMPORÁRIO) ---
