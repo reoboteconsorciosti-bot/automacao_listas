@@ -109,8 +109,8 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
         pdf.set_font('Arial', 'B', 10)
 
     for header in headers:
-        # Border 0 no header também para ficar clean, ou apenas fundo preenchido
-        pdf.cell(col_widths.get(header, 10), 8, str(header), 0, 0, 'C', 1) 
+        # Border 1 no header para voltar as linhas de grade
+        pdf.cell(col_widths.get(header, 10), 8, str(header), 1, 0, 'C', 1) 
     pdf.ln()
 
     # Reset text color for body
@@ -140,7 +140,7 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
                 while pdf.get_string_width(cell_text) > col_width - 4:
                     cell_text = cell_text[:-1]
 
-            pdf.cell(col_width, 6, cell_text, 0, 0, 'L', fill) # Border 0 (sem bordas), apenas fill
+            pdf.cell(col_width, 6, cell_text, 1, 0, 'L', fill) # Border 1 (com bordas)
         pdf.ln()
     
     # --- GERAÇÃO DE SAÍDA ROBUSTA (VIA ARQUIVO TEMPORÁRIO) ---
