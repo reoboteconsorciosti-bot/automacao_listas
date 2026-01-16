@@ -282,7 +282,7 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
     if "SOCIO1Celular2" in essential_cols:
         df_processed["SOCIO1Celular2"] = df_processed["SOCIO1Celular2"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
     if "Whats" in essential_cols:
-        df_processed["Whats"] = df_processed["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=True)[0])
+        df_processed["Whats"] = df_processed["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
     if "CEL" in essential_cols:
         df_processed["CEL"] = df_processed["CEL"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
 

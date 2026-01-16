@@ -69,15 +69,15 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
     col_widths = {}
     # Adicionadas larguras específicas para colunas da higienização
     TARGET_WIDTHS = {
-        "Razao": 55,       # Aumentado de 45
-        "Logradouro": 45,  # Aumentado de 38
+        "Razao": 55,       
+        "Logradouro": 45,  
         "Numero": 12,      
-        "Bairro": 25,      # Aumentado de 22
-        "Cidade": 22,      # Aumentado de 20
+        "Bairro": 25,      
+        "Cidade": 22,      
         "UF": 9,           
-        "NOME": 63,        # Aumentado de 55
+        "NOME": 63,        
         "Whats": 29,       
-        "CEL": 28,         # Ajustado para caber no limite
+        "CEL": 28,         
         "1º Contato": 22, "2º Contato": 22, "3º Contato": 22, 
         "Atend. Lig.(S/N)": 33, "Visita Marc.(S/N)": 33
     }
