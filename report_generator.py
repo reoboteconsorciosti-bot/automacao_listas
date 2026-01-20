@@ -1345,7 +1345,10 @@ def aba_automacao_pessoas_agendor():
                         generated_files[nome_arquivo_agendor] = output_excel_consultor.getvalue()
                         leads_processados = total_leads
                     else:
-                        # Existing batching logic: distribute in chunks across consultants
+                        # Logic for multiple consultants or forced split
+                        # Accumulate data first to avoid file overwrites
+                        consultant_buffer = {c: [] for c in effective_consultores}
+                        
                         while leads_processados < total_leads:
                             for consultor in effective_consultores:
                                 if leads_processados >= total_leads:
@@ -1356,14 +1359,12 @@ def aba_automacao_pessoas_agendor():
                                 df_lote = df_leads_mapped.iloc[inicio_lote:fim_lote].copy()
 
                                 if not df_lote.empty:
-                                    dados_finais = []
                                     consultor_formatado = consultor.lower().replace(' ', '.')
                                     for _, row in df_lote.iterrows():
                                         whatsapp_val = row.get("Whats")
                                         whatsapp_str = f"+55{str(whatsapp_val).strip()}" if whatsapp_val and pd.notna(whatsapp_val) and str(whatsapp_val).strip() else ""
                                         celular_val = row.get("CEL")
                                         celular_str = str(celular_val) if celular_val and pd.notna(celular_val) else ""
-                                        
                                         
                                         # Lógica para Descrição
                                         descricao_val = ""
@@ -1390,6 +1391,7 @@ def aba_automacao_pessoas_agendor():
                                         cep_val = ""
                                         if "CEP" in row and pd.notna(row.get("CEP")):
                                             cep_val = normalize_cep(row.get("CEP"))
+                                        
                                         linha = {col: "" for col in colunas_output}
                                         linha.update({
                                             "Nome": row.get("NOME", ""),
@@ -1408,22 +1410,21 @@ def aba_automacao_pessoas_agendor():
                                             "Complemento": row.get("Complemento", ""),
                                             "CEP": cep_val
                                         })
-                                        dados_finais.append(linha)
+                                        consultant_buffer[consultor].append(linha)
 
-                                    df_final_consultor = pd.DataFrame(dados_finais, columns=colunas_output)
-
-                                    output_excel_consultor = generate_excel_buffer(df_final_consultor, sheet_name='Pessoas')
-
-                                    # Determine localidade for filename (safer logic)
-                                    localidade = determine_localidade(user_col_mapping, df_lote, default="CG")
-
-                                    nicho_formatado = nicho_valor.upper().replace(' ', '_')
-                                    primeiro_nome = consultor.split(' ')[0].upper()
-                                    data_formatada = datetime.now().strftime('%d-%m-%Y')
-                                    # Nome do arquivo: usar apenas o nicho e o primeiro nome do consultor
-                                    nome_arquivo_agendor = f"PESSOAS_{nicho_formatado}_{primeiro_nome}_{data_formatada}.xlsx"
-                                    generated_files[nome_arquivo_agendor] = output_excel_consultor.getvalue()
                                     leads_processados += len(df_lote)
+
+                        # Generate files from buffer
+                        for consultor, dados_finais in consultant_buffer.items():
+                            if dados_finais:
+                                df_final_consultor = pd.DataFrame(dados_finais, columns=colunas_output)
+                                output_excel_consultor = generate_excel_buffer(df_final_consultor, sheet_name='Pessoas')
+
+                                nicho_formatado = nicho_valor.upper().replace(' ', '_')
+                                primeiro_nome = consultor.split(' ')[0].upper()
+                                data_formatada = datetime.now().strftime('%d-%m-%Y')
+                                nome_arquivo_agendor = f"PESSOAS_{nicho_formatado}_{primeiro_nome}_{data_formatada}.xlsx"
+                                generated_files[nome_arquivo_agendor] = output_excel_consultor.getvalue()
 
                     # --- Lógica de Download e Handoff ---
                     if not generated_files:
