@@ -229,7 +229,18 @@ def clean_phone_number(number_str, preserve_full=False):
     """
     if pd.isna(number_str) or str(number_str).strip() == '':
         return np.nan
-    digits = ''.join(filter(str.isdigit, str(number_str)))
+    
+    # Converte para string e remove espaços
+    s_val = str(number_str).strip()
+    
+    # TRATAMENTO ESPECIAL PARA FLOATS:
+    # Se o número veio do Excel como float (ex: 67981783902.0), ao virar string fica "67981783902.0".
+    # O filtro de digitos pegaria o '0' final, estragando o número.
+    # Removemos o '.0' explicitamente.
+    if s_val.endswith('.0'):
+        s_val = s_val[:-2]
+        
+    digits = ''.join(filter(str.isdigit, s_val))
 
     if preserve_full:
         # Preserva o valor inteiro quando parece um telefone (>=10 dígitos)
