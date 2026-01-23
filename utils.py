@@ -390,3 +390,101 @@ def gerar_excel_em_memoria(df_lote, consultor, data):
         return output
     except Exception:
         return io.BytesIO()
+
+def process_agendor_report(df_original, df_error, col_mapping_original=None):
+    """
+    Processa o relatório de erros do Agendor para separar o joio do trigo.
+    
+    Args:
+        df_original: DataFrame original que foi enviado (fonte da verdade).
+        df_error: DataFrame do relatório de erros do Agendor.
+        col_mapping_original: O mapeamento usado para gerar o original (opcional).
+        
+    Returns:
+        tuple: (df_safe, df_manual_fix, stats)
+        - df_safe: Leads que NÃO deram erro (ou foram limpos).
+        - df_manual_fix: Leads que deram erro (excluindo duplicados) para edição.
+        - stats: Dic com contagens (total, duplicados, manual, etc).
+    """
+    stats = {
+        "original_total": len(df_original),
+        "error_total": len(df_error),
+        "duplicates_removed": 0,
+        "auto_fixed": 0,
+        "manual_fix_needed": 0,
+        "safe_total": 0
+    }
+    
+    # 1. Identificar coluna de Motivo
+    reason_col = best_match_column(df_error.columns, ["Motivo", "Erro", "Reason", "Status", "Importação"])
+    
+    # 2. Criar Chaves Únicas (WhatsApp Limpo) para Cruzamento
+    # Assumindo que o df_original já tem a coluna 'WhatsApp' ou 'Whats' formatada.
+    col_whats_orig = best_match_column(df_original.columns, ["WhatsApp", "Whats", "Celular", "Phone"])
+    col_whats_err = best_match_column(df_error.columns, ["WhatsApp", "Whats", "Celular", "Phone"])
+    
+    if not col_whats_orig or not col_whats_err:
+        return df_original, pd.DataFrame(), stats # Abortar se não achar chaves
+        
+    # Helper para gerar chave segura
+    def get_key(val):
+        clean_val, _ = format_phone_for_whatsapp_business(val, include_country_code=False)
+        return clean_val if clean_val else "MISSING"
+
+    # Trabalhar com cópias para não afetar o original externo
+    df_temp_orig = df_original.copy()
+    df_temp_err = df_error.copy()
+
+    df_temp_orig["_MATCH_KEY"] = df_temp_orig[col_whats_orig].apply(get_key)
+    df_temp_err["_MATCH_KEY"] = df_temp_err[col_whats_err].apply(get_key)
+    
+    # 3. Identificar Duplicidades
+    # Critério: O motivo contém termos de duplicidade
+    is_duplicate = pd.Series([False] * len(df_temp_err))
+    
+    if reason_col:
+        # Normaliza para lower e busca termos
+        is_duplicate = df_temp_err[reason_col].astype(str).str.lower().str.contains("duplicidade|duplicate|já existe|cadastrado", na=False)
+    
+    # Chaves que são duplicatas REAIS (removemos)
+    keys_duplicates = df_temp_err.loc[is_duplicate, "_MATCH_KEY"].unique()
+    keys_duplicates = [k for k in keys_duplicates if k != "MISSING"]
+    
+    # Chaves que são Outros Erros (vamos editar)
+    keys_errors_other = df_temp_err.loc[~is_duplicate, "_MATCH_KEY"].unique()
+    keys_errors_other = [k for k in keys_errors_other if k != "MISSING"]
+    
+    stats["duplicates_removed"] = len(keys_duplicates)
+    
+    # 4. Separar Leads Seguros e Refugo
+    # Safe = Original - (Todas as chaves presentes no Errors)
+    # Motivo: Se está no Error, não é Safe. Se foi Duplicata, é lixo. Se foi outro erro, vai para Edição.
+    all_error_keys = set(df_temp_err["_MATCH_KEY"].unique()) - {"MISSING"}
+    
+    df_safe = df_temp_orig[~df_temp_orig["_MATCH_KEY"].isin(all_error_keys)].copy()
+    if "_MATCH_KEY" in df_safe.columns:
+        df_safe.drop(columns=["_MATCH_KEY"], inplace=True)
+        
+    # 5. Preparar Leads para Fix Manual
+    # Pega as linhas DO ORIGINAL que correspondem às chaves de erro (para preservar formatação e colunas originais).
+    # Se pegássemos do arquivo de erro, poderíamos perder colunas que o Agendor não devolveu ou mudou o nome.
+    mask_fix = df_temp_orig["_MATCH_KEY"].isin(keys_errors_other) & (df_temp_orig["_MATCH_KEY"] != "MISSING")
+    df_manual_fix = df_temp_orig[mask_fix].copy()
+    
+    # Injetar a coluna de Motivo (vinda do Erro) no DataFrame de Edição para o usuário saber o que consertar
+    if reason_col:
+        # Cria mapa Key -> Reason (pega o primeiro motivo encontrado para aquela chave)
+        reason_map = df_temp_err.drop_duplicates(subset=["_MATCH_KEY"]).set_index("_MATCH_KEY")[reason_col]
+        df_manual_fix["MOTIVO_ERRO"] = df_manual_fix["_MATCH_KEY"].map(reason_map)
+        
+        # Move MOTIVO_ERRO para o começo para facilitar a visualização
+        cols = ["MOTIVO_ERRO"] + [c for c in df_manual_fix.columns if c != "MOTIVO_ERRO" and c != "_MATCH_KEY"]
+        df_manual_fix = df_manual_fix[cols]
+    
+    if "_MATCH_KEY" in df_manual_fix.columns:
+        df_manual_fix.drop(columns=["_MATCH_KEY"], inplace=True)
+        
+    stats["manual_fix_needed"] = len(df_manual_fix)
+    stats["safe_total"] = len(df_safe)
+    
+    return df_safe, df_manual_fix, stats

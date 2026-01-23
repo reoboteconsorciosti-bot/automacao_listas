@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+from utils import process_agendor_report, format_phone_for_whatsapp_business, generate_excel_buffer, clean_phone_number, normalize_cep, best_match_column, proximo_dia_util, determine_localidade
 from streamlit_option_menu import option_menu
 import pandas as pd
 import os
@@ -1433,6 +1434,9 @@ def aba_automacao_pessoas_agendor():
 
                     # Salva os arquivos gerados no estado da sessão para o handoff
                     st.session_state.generated_pessoas_files = generated_files
+                    # Persiste o DataFrame original para permitir a reconciliação de erros posterir
+                    st.session_state.last_agendor_df = df_leads_mapped.copy()
+                    st.session_state.last_agendor_col_mapping = user_col_mapping.copy()
 
                     st.success(f"Processo concluído! {len(generated_files)} arquivo(s) de pessoas para Agendor foram gerados.")
 
@@ -1477,6 +1481,129 @@ def aba_automacao_pessoas_agendor():
                                 mime="application/zip",
                                 key="download_zip_agendor"
                             )
+                    
+                    # --- Seção de Reconciliação (Ciclo Fechado) ---
+                    st.markdown("---")
+                    with st.expander("🛠️ Validação de Erros Agendor (Ciclo Fechado)", expanded=False):
+                        st.info("Suba o 'Relatório de Erros' gerado pelo Agendor para separar Duplicidades (Lixo) de Erros Recuperáveis.")
+                        
+                        # Recuperação de Sessão ou Upload Manual do Original
+                        df_original_source = st.session_state.get('last_agendor_df')
+                        
+                        col_up_err, col_up_orig = st.columns(2)
+                        with col_up_err:
+                            erro_file = st.file_uploader("Upload Relatório de Erros Agendor (.xlsx)", type=["xlsx"])
+                            
+                        # Se a sessão expirou, pede o arquivo original novamente
+                        if df_original_source is None:
+                            with col_up_orig:
+                                orig_file = st.file_uploader("Upload Arquivo Original (O que você enviou)", type=["xlsx", "csv"])
+                                if orig_file:
+                                    try:
+                                        if orig_file.name.endswith('.csv'):
+                                            # Tenta detectar delimitador
+                                            try:
+                                                string_data = orig_file.getvalue().decode('utf-8')
+                                                sniffer = csv.Sniffer()
+                                                dialect = sniffer.sniff(string_data[:1024])
+                                                delimiter = dialect.delimiter
+                                            except:
+                                                delimiter = ',' # Fallback
+                                            orig_file.seek(0)
+                                            df_original_source = pd.read_csv(orig_file, delimiter=delimiter, dtype=str)
+                                        else:
+                                            df_original_source = pd.read_excel(orig_file, dtype=str)
+                                        
+                                        # Aplica limpeza básica de telefone se necessário para garantir o match
+                                        if "Whats" in df_original_source.columns:
+                                            df_original_source["Whats"] = df_original_source["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
+                                            
+                                        st.success("Arquivo Original Carregado.")
+                                    except Exception as e:
+                                        st.error(f"Erro ao ler original: {e}")
+
+                        # Botão de Análise
+                        if erro_file and df_original_source is not None:
+                            if st.button("Analisar e Separar Erros"):
+                                try:
+                                    df_err = pd.read_excel(erro_file, dtype=str)
+                                    df_safe, df_manual, stats = process_agendor_report(df_original_source, df_err)
+                                    
+                                    # Salva no estado
+                                    st.session_state.recon_df_safe = df_safe
+                                    st.session_state.recon_df_manual = df_manual
+                                    st.session_state.recon_stats = stats
+                                    st.session_state.recon_complete = True
+                                    st.rerun() # Refresh para mostrar editores
+                                except Exception as e:
+                                    st.error(f"Erro ao processar reconciliação: {e}")
+                                    
+                        # Exibição dos Resultados e Editor
+                        if st.session_state.get('recon_complete'):
+                            stats = st.session_state.recon_stats
+                            
+                            # Métricas Visuais
+                            c1, c2, c3 = st.columns(3)
+                            c1.metric("Duplicidades Removidas", stats['duplicates_removed'], delta_color="normal")
+                            c2.metric("Erros para Ajuste Manual", stats['manual_fix_needed'], delta_color="off")
+                            c3.metric("Leads Salvos (Sem Erro)", stats['safe_total'], delta="+OK")
+                            
+                            st.write("---")
+                            
+                            # Área de Edição (War Room)
+                            df_manual = st.session_state.recon_df_manual
+                            
+                            if not df_manual.empty:
+                                st.warning(f"⚠️ **{len(df_manual)} leads precisam de ajuste.** Edite os campos abaixo (ex: Cidade, Email) e confirme.")
+                                
+                                # Configuração do Editor para evitar bugs de float
+                                column_config = {
+                                    column: st.column_config.TextColumn(column) 
+                                    for column in df_manual.columns
+                                }
+                                # Destaque para Motivo
+                                column_config["MOTIVO_ERRO"] = st.column_config.TextColumn("Motivo do Erro", disabled=True)
+                                
+                                edited_df = st.data_editor(
+                                    df_manual,
+                                    column_config=column_config,
+                                    use_container_width=True,
+                                    num_rows="dynamic",
+                                    key="editor_reconciliacao"
+                                )
+                                
+                                if st.button("✅ Confirmar Correções e Gerar Arquivo Final"):
+                                    # Fusão: Safe + Edited
+                                    df_safe = st.session_state.recon_df_safe
+                                    df_final_reconciled = pd.concat([df_safe, edited_df], ignore_index=True)
+                                    
+                                    # Gerar Excel
+                                    output_buffer = generate_excel_buffer(df_final_reconciled, sheet_name='Pessoas')
+                                    
+                                    st.success(f"Arquivo Regenerado com Sucesso! Total de Leads: {len(df_final_reconciled)}")
+                                    
+                                    # Botão Download
+                                    timestamp = datetime.now().strftime('%H%M')
+                                    st.download_button(
+                                        label="⬇️ Baixar Arquivo Corrigido (Substituir Original)",
+                                        data=output_buffer.getvalue(),
+                                        file_name=f"PESSOAS_CORRIGIDO_{timestamp}.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                    )
+                                    
+                            else:
+                                st.success("🎉 Nenhum erro manual pendente! Todos os problemas eram duplicidades e foram removidos.")
+                                if st.button("Gerar Arquivo Limpo (Sem Duplicidades)"):
+                                     # Apenas Safe
+                                    df_safe = st.session_state.recon_df_safe
+                                    output_buffer = generate_excel_buffer(df_safe, sheet_name='Pessoas')
+                                    
+                                    st.download_button(
+                                        label="⬇️ Baixar Arquivo Limpo",
+                                        data=output_buffer.getvalue(),
+                                        file_name=f"PESSOAS_LIMPO_SEM_DUPLICIDADES.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                    )
                     
                     # Botão para Handoff
                     with col2:
