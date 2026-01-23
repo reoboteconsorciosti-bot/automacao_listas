@@ -1484,7 +1484,11 @@ def aba_automacao_pessoas_agendor():
                     
                     # --- Seção de Reconciliação (Ciclo Fechado) ---
                     st.markdown("---")
-                    with st.expander("🛠️ Validação de Erros Agendor (Ciclo Fechado)", expanded=False):
+                    
+                    # Mantém o expander aberto se tivermos gerado arquivos agora OU se já estivermos no meio da reconciliação
+                    recon_active = bool(st.session_state.get('generated_pessoas_files')) or st.session_state.get('recon_complete')
+                    
+                    with st.expander("🛠️ Validação de Erros Agendor (Ciclo Fechado)", expanded=recon_active):
                         st.info("Suba o 'Relatório de Erros' gerado pelo Agendor para separar Duplicidades (Lixo) de Erros Recuperáveis.")
                         
                         # Recuperação de Sessão ou Upload Manual do Original
