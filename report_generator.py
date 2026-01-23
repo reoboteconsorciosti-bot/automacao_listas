@@ -1506,40 +1506,46 @@ def aba_automacao_pessoas_agendor():
         with st.expander("🛠️ Validação de Erros Agendor (Ciclo Fechado)", expanded=recon_active):
             st.info("Suba o 'Relatório de Erros' gerado pelo Agendor para separar Duplicidades (Lixo) de Erros Recuperáveis.")
         
-        # Recuperação de Sessão ou Upload Manual do Original
-        df_original_source = st.session_state.get('last_agendor_df')
-        
-        col_up_err, col_up_orig = st.columns(2)
-        with col_up_err:
-            erro_file = st.file_uploader("Upload Relatório de Erros Agendor (.xlsx)", type=["xlsx"])
+            # Recuperação de Sessão ou Upload Manual do Original
+            df_original_source = st.session_state.get('last_agendor_df')
             
-        # Se a sessão expirou, pede o arquivo original novamente
-        if df_original_source is None:
-            with col_up_orig:
-                orig_file = st.file_uploader("Upload Arquivo Original (O que você enviou)", type=["xlsx", "csv"])
-                if orig_file:
-                    try:
-                        if orig_file.name.endswith('.csv'):
-                            # Tenta detectar delimitador
-                            try:
-                                string_data = orig_file.getvalue().decode('utf-8')
-                                sniffer = csv.Sniffer()
-                                dialect = sniffer.sniff(string_data[:1024])
-                                delimiter = dialect.delimiter
-                            except:
-                                delimiter = ',' # Fallback
-                            orig_file.seek(0)
-                            df_original_source = pd.read_csv(orig_file, delimiter=delimiter, dtype=str)
-                        else:
-                            df_original_source = pd.read_excel(orig_file, dtype=str)
-                        
-                        # Aplica limpeza básica de telefone se necessário para garantir o match
-                        if "Whats" in df_original_source.columns:
-                            df_original_source["Whats"] = df_original_source["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
+            # Layout Inteligente: Se já temos o original, mostra apenas upload de erro (full width).
+            # Se não temos, divide em 2 colunas para subir o original também.
+            
+            erro_file = None
+            
+            if df_original_source is not None:
+                # Caso Simples: Só precisa do arquivo de erro
+                st.success("✅ Arquivo Original carregado da sessão atual.")
+                erro_file = st.file_uploader("Upload Relatório de Erros Agendor (.xlsx)", type=["xlsx"])
+            else:
+                # Caso Completo: Precisa dos dois
+                c_err, c_orig = st.columns(2)
+                with c_err:
+                     erro_file = st.file_uploader("Upload Relatório de Erros Agendor (.xlsx)", type=["xlsx"])
+                with c_orig:
+                     orig_file = st.file_uploader("Upload Arquivo Original (O que você enviou)", type=["xlsx", "csv"])
+                     if orig_file:
+                        try:
+                            if orig_file.name.endswith('.csv'):
+                                try:
+                                    string_data = orig_file.getvalue().decode('utf-8')
+                                    sniffer = csv.Sniffer()
+                                    dialect = sniffer.sniff(string_data[:1024])
+                                    delimiter = dialect.delimiter
+                                except:
+                                    delimiter = ',' 
+                                orig_file.seek(0)
+                                df_original_source = pd.read_csv(orig_file, delimiter=delimiter, dtype=str)
+                            else:
+                                df_original_source = pd.read_excel(orig_file, dtype=str)
                             
-                        st.success("Arquivo Original Carregado.")
-                    except Exception as e:
-                        st.error(f"Erro ao ler original: {e}")
+                            if "Whats" in df_original_source.columns:
+                                df_original_source["Whats"] = df_original_source["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
+                                
+                            st.success("Arquivo Original Carregado.")
+                        except Exception as e:
+                            st.error(f"Erro ao ler original: {e}")
 
         # Botão de Análise
         if erro_file and df_original_source is not None:
