@@ -49,7 +49,8 @@ def best_match_column(df_columns, candidates, min_score=50):
     Usa várias heurísticas combinadas (igualdade, substring, interseção de tokens e similaridade).
     Retorna string vazia se nenhuma coluna atingir `min_score`.
     """
-    if not df_columns:
+
+    if df_columns is None or len(df_columns) == 0:
         return ''
 
     df_cols = [str(c) for c in df_columns]
@@ -440,9 +441,10 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
     
     # 3. Identificar Duplicidades
     # Critério: O motivo contém termos de duplicidade
-    is_duplicate = pd.Series([False] * len(df_temp_err))
+    # Inicializa com False alinhado ao index para evitar desalinhamento
+    is_duplicate = pd.Series(False, index=df_temp_err.index)
     
-    if reason_col:
+    if reason_col and reason_col != "":
         # Normaliza para lower e busca termos
         is_duplicate = df_temp_err[reason_col].astype(str).str.lower().str.contains("duplicidade|duplicate|já existe|cadastrado", na=False)
     
@@ -472,7 +474,7 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
     df_manual_fix = df_temp_orig[mask_fix].copy()
     
     # Injetar a coluna de Motivo (vinda do Erro) no DataFrame de Edição para o usuário saber o que consertar
-    if reason_col:
+    if reason_col and reason_col != "":
         # Cria mapa Key -> Reason (pega o primeiro motivo encontrado para aquela chave)
         reason_map = df_temp_err.drop_duplicates(subset=["_MATCH_KEY"]).set_index("_MATCH_KEY")[reason_col]
         df_manual_fix["MOTIVO_ERRO"] = df_manual_fix["_MATCH_KEY"].map(reason_map)
