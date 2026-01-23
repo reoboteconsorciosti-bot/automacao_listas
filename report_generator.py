@@ -1,5 +1,8 @@
 import streamlit as st
 import json
+import importlib
+import utils
+importlib.reload(utils)
 from utils import process_agendor_report, format_phone_for_whatsapp_business, generate_excel_buffer, clean_phone_number, normalize_cep, best_match_column, proximo_dia_util, determine_localidade
 from streamlit_option_menu import option_menu
 import pandas as pd
@@ -1492,7 +1495,9 @@ def aba_automacao_pessoas_agendor():
                             st.info("ℹ️ Agora, clique na aba 'Gerador de Negócios para Robôs' para gerar os arquivos de negócios.")
 
                 except Exception as e:
+                    import traceback
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
+                    st.code(traceback.format_exc())
 
 
     # --- Seção de Reconciliação (Ciclo Fechado) ---
@@ -1639,7 +1644,9 @@ def aba_automacao_pessoas_agendor():
                     )
 
     except Exception as e:
+        import traceback
         st.error(f"Ocorreu um erro durante a reconciliação: {e}")
+        st.code(traceback.format_exc())
 
 
 # Note: `carregar_consultores` / `salvar_consultores` and `CONSULTORES_FILE`
