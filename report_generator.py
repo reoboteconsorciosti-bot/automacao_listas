@@ -1,6 +1,8 @@
 import streamlit as st
 import json
+import importlib
 import utils
+importlib.reload(utils)
 from utils import process_agendor_report, format_phone_for_whatsapp_business, generate_excel_buffer, clean_phone_number, normalize_cep, best_match_column, proximo_dia_util, determine_localidade
 from streamlit_option_menu import option_menu
 import pandas as pd

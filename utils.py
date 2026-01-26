@@ -429,13 +429,14 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
         
         log(f"Check 1: Reason Col Search in {list(df_error.columns)}")
         # 1. Identificar coluna de Motivo
-        reason_col = best_match_column(df_error.columns, ["Motivo", "Erro", "Reason", "Status", "Importação"])
+        # FIX: Cast to list explicitly to avoid Ambiguous Index error
+        reason_col = best_match_column(list(df_error.columns), ["Motivo", "Erro", "Reason", "Status", "Importação"])
         log(f"Reason Col Found: '{reason_col}'")
         
         log("Check 2: Key Col Search")
         # 2. Criar Chaves Únicas (WhatsApp Limpo) para Cruzamento
-        col_whats_orig = best_match_column(df_original.columns, ["WhatsApp", "Whats", "Celular", "Phone"])
-        col_whats_err = best_match_column(df_error.columns, ["WhatsApp", "Whats", "Celular", "Phone"])
+        col_whats_orig = best_match_column(list(df_original.columns), ["WhatsApp", "Whats", "Celular", "Phone"])
+        col_whats_err = best_match_column(list(df_error.columns), ["WhatsApp", "Whats", "Celular", "Phone"])
         
         log(f"Keys: Orig='{col_whats_orig}', Err='{col_whats_err}'")
         
