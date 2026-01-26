@@ -248,6 +248,15 @@ def clean_phone_number(number_str, preserve_full=False):
     # Converte para string e remove espaços
     s_val = str(number_str).strip()
     
+    # TRATAMENTO PARA NOTAÇÃO CIENTÍFICA (Ex: 5.51199E+12)
+    if 'E' in s_val.upper() and '.' in s_val:
+        try:
+            # Tenta converter para float e depois int para expandir o número
+            f_val = float(s_val)
+            s_val = str(int(f_val))
+        except:
+            pass # Se falhar, segue com o string original
+    
     # TRATAMENTO ESPECIAL PARA FLOATS:
     # Se o número veio do Excel como float (ex: 67981783902.0), ao virar string fica "67981783902.0".
     # O filtro de digitos pegaria o '0' final, estragando o número.
@@ -447,6 +456,14 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
             val, _ = format_phone_for_whatsapp_business(val, include_country_code=False)
             return val if val else None
         except: return None
+    
+    def get_short_phone(val):
+        # Retorna apenas os últimos 8 dígitos para matching agressivo
+        # Usa clean_phone_number para garantir tratamento de notação científica
+        s = clean_phone_number(val, preserve_full=True)
+        if pd.isna(s): return None
+        s = str(s)
+        return s[-8:] if len(s) >= 8 else None
         
     def norm_email(val):
         try:
@@ -455,11 +472,17 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
         except: return None
 
     # Gerar Chaves
+    # Chave 1: Telefone Completo (Normalizado)
     df_temp_orig["_KEY_PHONE"] = df_temp_orig[col_phone_orig].apply(norm_phone) if col_phone_orig else None
     df_temp_err["_KEY_PHONE"] = df_temp_err[col_phone_err].apply(norm_phone) if col_phone_err else None
     
+    # Chave 2: Email
     df_temp_orig["_KEY_EMAIL"] = df_temp_orig[col_email_orig].apply(norm_email) if col_email_orig else None
     df_temp_err["_KEY_EMAIL"] = df_temp_err[col_email_err].apply(norm_email) if col_email_err else None
+    
+    # Chave 3: Telefone Curto (Últimos 8 inteiros) - Para pegar casos onde Agendor zoou o DDD
+    df_temp_orig["_KEY_PHONE_SHORT"] = df_temp_orig[col_phone_orig].apply(get_short_phone) if col_phone_orig else None
+    df_temp_err["_KEY_PHONE_SHORT"] = df_temp_err[col_phone_err].apply(get_short_phone) if col_phone_err else None
 
     # --- 3. Identificação de Erros ---
     # Identificar quais linhas do arquivo de ERRO são Duplicatas vs Outros
@@ -481,28 +504,22 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
     stats["rows_classified_other"] = len(df_err_others)
     
     # Count how many "Other" rows have at least one key
-    valid_key_count = df_err_others.apply(lambda r: 1 if (pd.notna(r.get("_KEY_PHONE")) or pd.notna(r.get("_KEY_EMAIL"))) else 0, axis=1).sum()
+    valid_key_count = df_err_others.apply(lambda r: 1 if (pd.notna(r.get("_KEY_PHONE")) or pd.notna(r.get("_KEY_EMAIL")) or pd.notna(r.get("_KEY_PHONE_SHORT"))) else 0, axis=1).sum()
     stats["others_with_valid_key"] = valid_key_count
 
     # --- 4. Cruzamento (Matching) ---
     # Queremos encontrar quais linhas do ORIGINAL correspondem aos erros.
-    # Estratégia: Match Phone OR Match Email
+    # Estratégia: Match Phone OR Match Email OR Match Short Phone
     
     # Conjuntos de chaves de erro (para exclusão rápida)
     err_phones = set(df_temp_err["_KEY_PHONE"].dropna().unique())
     err_emails = set(df_temp_err["_KEY_EMAIL"].dropna().unique())
+    err_phones_short = set(df_temp_err["_KEY_PHONE_SHORT"].dropna().unique())
     
     # Conjuntos específicos de "Outros Erros" (para ajuste manual)
     fix_phones = set(df_err_others["_KEY_PHONE"].dropna().unique())
     fix_emails = set(df_err_others["_KEY_EMAIL"].dropna().unique())
-    
-    # Função para verificar se uma linha do original deve ser marcada
-    def check_match(row, target_phones, target_emails):
-        p = row.get("_KEY_PHONE")
-        e = row.get("_KEY_EMAIL")
-        if p and p in target_phones: return True
-        if e and e in target_emails: return True
-        return False
+    fix_phones_short = set(df_err_others["_KEY_PHONE_SHORT"].dropna().unique())
 
     # (A) Identificar SAFE vs ERROR no Original
     # Uma linha é ERROR se seu telefone OU email estiver no conjunto de erros totais
@@ -513,6 +530,9 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
         mask_is_error |= df_temp_orig["_KEY_PHONE"].isin(err_phones)
     if err_emails:
         mask_is_error |= df_temp_orig["_KEY_EMAIL"].isin(err_emails)
+    if err_phones_short:
+        # Só ativa Short Match se não tiver match full? Não, use OR.
+        mask_is_error |= df_temp_orig["_KEY_PHONE_SHORT"].isin(err_phones_short)
     
     df_safe = df_temp_orig[~mask_is_error].copy()
     
@@ -522,6 +542,8 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
         mask_is_fix |= df_temp_orig["_KEY_PHONE"].isin(fix_phones)
     if fix_emails:
         mask_is_fix |= df_temp_orig["_KEY_EMAIL"].isin(fix_emails)
+    if fix_phones_short:
+        mask_is_fix |= df_temp_orig["_KEY_PHONE_SHORT"].isin(fix_phones_short)
         
     df_manual_fix = df_temp_orig[mask_is_fix].copy()
     
@@ -531,13 +553,16 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
         # Prioridade para telefone
         map_phone = df_err_others.dropna(subset=["_KEY_PHONE"]).drop_duplicates("_KEY_PHONE").set_index("_KEY_PHONE")[reason_col]
         map_email = df_err_others.dropna(subset=["_KEY_EMAIL"]).drop_duplicates("_KEY_EMAIL").set_index("_KEY_EMAIL")[reason_col]
+        map_short = df_err_others.dropna(subset=["_KEY_PHONE_SHORT"]).drop_duplicates("_KEY_PHONE_SHORT").set_index("_KEY_PHONE_SHORT")[reason_col]
         
         def get_reason(row):
             p = row.get("_KEY_PHONE")
             e = row.get("_KEY_EMAIL")
+            s = row.get("_KEY_PHONE_SHORT")
             res = None
             if p: res = map_phone.get(p)
             if not res and e: res = map_email.get(e)
+            if not res and s: res = map_short.get(s)
             return res
             
         df_manual_fix["MOTIVO_ERRO"] = df_manual_fix.apply(get_reason, axis=1)
