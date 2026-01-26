@@ -1278,6 +1278,9 @@ def aba_automacao_pessoas_agendor():
                     # If exactly one consultant is selected and the user did not request forced splitting,
                     # create a single file containing all leads for that consultant.
                     # Use the local variable 'force_split' which is safely initialized above.
+                    # Initialize buffer globally to avoid UnboundLocalError
+                    consultant_buffer = {}
+                    
                     if len(effective_consultores) == 1 and not force_split:
                         consultor = effective_consultores[0]
                         dados_finais = []
@@ -1334,6 +1337,9 @@ def aba_automacao_pessoas_agendor():
                                 "CEP": cep_val
                             })
                             dados_finais.append(linha)
+                        
+                        # Fix: Populate buffer so downstream logic works
+                        consultant_buffer = {consultor: dados_finais}
 
                         df_final_consultor = pd.DataFrame(dados_finais, columns=colunas_output)
                         output_excel_consultor = generate_excel_buffer(df_final_consultor, sheet_name='Pessoas')
