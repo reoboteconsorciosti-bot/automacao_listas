@@ -1435,10 +1435,19 @@ def aba_automacao_pessoas_agendor():
                         st.warning("Nenhum arquivo foi gerado. Verifique os filtros e os dados de entrada.")
                         return
 
+                    
+                    # Consolidate all generated data for Reconciliation Source of Truth
+                    # This ensures the 'Clean File' matches the structure of the files sent to Agendor
+                    all_final_records = []
+                    for consultor, dados_finais in consultant_buffer.items():
+                        all_final_records.extend(dados_finais)
+                    
+                    df_consolidated_output = pd.DataFrame(all_final_records, columns=colunas_output)
+
                     # Salva os arquivos gerados no estado da sessão para o handoff
                     st.session_state.generated_pessoas_files = generated_files
-                    # Persiste o DataFrame original para permitir a reconciliação de erros posterir
-                    st.session_state.last_agendor_df = df_leads_mapped.copy()
+                    # Persiste o DataFrame CONSOLIDADO FINAL para permitir a reconciliação de erros
+                    st.session_state.last_agendor_df = df_consolidated_output.copy()
                     st.session_state.last_agendor_col_mapping = user_col_mapping.copy()
 
                     st.success(f"Processo concluído! {len(generated_files)} arquivo(s) de pessoas para Agendor foram gerados.")
