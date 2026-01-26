@@ -445,11 +445,10 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
     is_duplicate = pd.Series(False, index=df_temp_err.index)
     
     if reason_col and reason_col != "":
-        if reason_col and reason_col != "":
         # Normaliza para lower e busca termos
-            mask = df_temp_err[reason_col].astype(str).str.lower().str.contains("duplicidade|duplicate|já existe|cadastrado", na=False)
-            # Garante que é booleano e alinhado
-            is_duplicate = mask.fillna(False).astype(bool)
+        mask = df_temp_err[reason_col].astype(str).str.lower().str.contains("duplicidade|duplicate|já existe|cadastrado", na=False)
+        # Garante que é booleano e alinhado
+        is_duplicate = mask.fillna(False).astype(bool)
     
     # Chaves que são duplicatas REAIS (removemos)
     keys_duplicates = df_temp_err.loc[is_duplicate, "_MATCH_KEY"].unique()
