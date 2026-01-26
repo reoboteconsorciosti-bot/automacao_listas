@@ -1591,8 +1591,20 @@ def aba_automacao_pessoas_agendor():
             c1, c2, c3 = st.columns(3)
             c1.metric("Duplicidades Removidas", stats['duplicates_removed'], delta_color="normal")
             c2.metric("Erros para Ajuste Manual", stats['manual_fix_needed'], delta_color="off")
-            c3.metric("Leads Salvos (Sem Erro)", stats['safe_total'], delta="+OK")
+            st.metric("Leads Salvos (Sem Erro)", stats['safe_total'], delta="+OK")
             
+            # Debug Forensic -- Only show if manual fix is empty but we suspect errors
+            with st.expander("🔍 Detalhes Técnicos da Análise (Debug)", expanded=False):
+                st.write(f"**Coluna usada como Motivo:** {stats.get('debug_reason_col', 'N/A')}")
+                st.write(f"**Total de Linhas no Relatório de Erro:** {stats.get('error_total', 0)}")
+                st.write(f"**Classificados como Duplicidade (Lixo):** {stats.get('rows_classified_dupe', 0)}")
+                st.write(f"**Classificados como Outros Erros:** {stats.get('rows_classified_other', 0)}")
+                st.write(f"**Outros Erros com Chave Válida (Tel/Email):** {stats.get('others_with_valid_key', 0)}")
+                st.write(f"**Correspondências Encontradas no Original:** {stats.get('manual_fix_needed', 0)}")
+                
+                if stats.get('rows_classified_other', 0) > 0 and stats.get('manual_fix_needed', 0) == 0:
+                    st.error("ALERTA: Existem erros não duplicados, mas não consiguimos ligá-los ao arquivo original. Provavelmente os telefones/emails no arquivo de erro estão muito diferentes do original.")
+
             st.write("---")
             
             # Área de Edição (War Room)

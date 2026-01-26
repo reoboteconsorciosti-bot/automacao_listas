@@ -474,6 +474,15 @@ def process_agendor_report(df_original, df_error, col_mapping_original=None):
     df_err_others = df_temp_err[~is_duplicate_mask]
     
     stats["duplicates_removed"] = len(df_err_dupes)
+    
+    # Forensic Stats for Debugging
+    stats["debug_reason_col"] = reason_col
+    stats["rows_classified_dupe"] = len(df_err_dupes)
+    stats["rows_classified_other"] = len(df_err_others)
+    
+    # Count how many "Other" rows have at least one key
+    valid_key_count = df_err_others.apply(lambda r: 1 if (pd.notna(r.get("_KEY_PHONE")) or pd.notna(r.get("_KEY_EMAIL"))) else 0, axis=1).sum()
+    stats["others_with_valid_key"] = valid_key_count
 
     # --- 4. Cruzamento (Matching) ---
     # Queremos encontrar quais linhas do ORIGINAL correspondem aos erros.
