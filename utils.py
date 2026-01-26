@@ -49,11 +49,20 @@ def best_match_column(df_columns, candidates, min_score=50):
     Usa várias heurísticas combinadas (igualdade, substring, interseção de tokens e similaridade).
     Retorna string vazia se nenhuma coluna atingir `min_score`.
     """
-
-    if df_columns is None or len(df_columns) == 0:
+    # 0. Safety: Convert to list to avoid Pandas "Ambiguous Truth" errors
+    try:
+        if hasattr(df_columns, 'tolist'):
+            cols_list = df_columns.tolist()
+        else:
+            cols_list = list(df_columns)
+    except Exception:
+        # If conversion fails, assume empty
         return ''
 
-    df_cols = [str(c) for c in df_columns]
+    if not cols_list:
+        return ''
+
+    df_cols = [str(c) for c in cols_list]
     df_cols_lower = [c.lower() for c in df_cols]
 
     best_col = ''
@@ -69,12 +78,15 @@ def best_match_column(df_columns, candidates, min_score=50):
             col_l = df_cols_lower[i]
             score = 0.0
 
+            # Exata igualdade (maior peso)
             if col_l == cand_l:
                 score += 120
 
+            # Substring (col contém candidato ou candidato contém coluna)
             if cand_l in col_l or col_l in cand_l:
                 score += 80
 
+            # Token overlap
             col_tokens = set([t for t in ''.join(ch if ch.isalnum() else ' ' for ch in col_l).split() if t])
             if cand_tokens and col_tokens:
                 inter = cand_tokens.intersection(col_tokens)
@@ -82,12 +94,14 @@ def best_match_column(df_columns, candidates, min_score=50):
                 if union:
                     score += 40 * (len(inter) / len(union))
 
+            # Similaridade fuzzier via SequenceMatcher
             try:
                 ratio = difflib.SequenceMatcher(a=cand_l, b=col_l).ratio()
                 score += 40 * ratio
             except Exception:
                 pass
 
+            # Slight preference for shorter column names on ties
             score -= 0.01 * len(col_l)
 
             if score > best_score:
