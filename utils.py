@@ -408,123 +408,142 @@ def gerar_excel_em_memoria(df_lote, consultor, data):
 
 def process_agendor_report(df_original, df_error, col_mapping_original=None):
     """
-    Processa o relatório de erros do Agendor para separar o joio do trigo.
-    Versão Instrumentada para Debug (Flight Recorder).
+    Processa o relatório de erros do Agendor.
+    Separa duplicatas (lixo) de outros erros (ajuste manual).
+    Usa correspondência por Telefone (Prioridade 1) e Email (Prioridade 2).
     """
-    debug_log = []
+    stats = {
+        "original_total": len(df_original),
+        "error_total": len(df_error),
+        "duplicates_removed": 0,
+        "auto_fixed": 0,
+        "manual_fix_needed": 0,
+        "safe_total": 0
+    }
     
-    def log(step):
-        debug_log.append(step)
+    # --- 1. Mapeamento de Colunas ---
+    # Colunas de erro/motivo
+    reason_col = best_match_column(list(df_error.columns), ["Motivo", "Erro", "Reason", "Status", "Importação"])
     
-    try:
-        log("Init stats")
-        stats = {
-            "original_total": len(df_original),
-            "error_total": len(df_error),
-            "duplicates_removed": 0,
-            "auto_fixed": 0,
-            "manual_fix_needed": 0,
-            "safe_total": 0
-        }
-        
-        log(f"Check 1: Reason Col Search in {list(df_error.columns)}")
-        # 1. Identificar coluna de Motivo
-        # FIX: Cast to list explicitly to avoid Ambiguous Index error
-        reason_col = best_match_column(list(df_error.columns), ["Motivo", "Erro", "Reason", "Status", "Importação"])
-        log(f"Reason Col Found: '{reason_col}'")
-        
-        log("Check 2: Key Col Search")
-        # 2. Criar Chaves Únicas (WhatsApp Limpo) para Cruzamento
-        col_whats_orig = best_match_column(list(df_original.columns), ["WhatsApp", "Whats", "Celular", "Phone"])
-        col_whats_err = best_match_column(list(df_error.columns), ["WhatsApp", "Whats", "Celular", "Phone"])
-        
-        log(f"Keys: Orig='{col_whats_orig}', Err='{col_whats_err}'")
-        
-        if not col_whats_orig or not col_whats_err:
-            log("ABORT: Missing key columns")
-            return df_original, pd.DataFrame(), stats 
-            
-        # Helper para gerar chave segura
-        def get_key(val):
-            try:
-                clean_val, _ = format_phone_for_whatsapp_business(val, include_country_code=False)
-                return clean_val if clean_val else "MISSING"
-            except:
-                return "MISSING"
+    # Colunas de Chave Primária (Telefone)
+    col_phone_orig = best_match_column(list(df_original.columns), ["WhatsApp", "Whats", "Celular", "Phone", "Telefone"])
+    col_phone_err = best_match_column(list(df_error.columns), ["WhatsApp", "Whats", "Celular", "Phone", "Telefone"])
+    
+    # Colunas de Chave Secundária (Email)
+    col_email_orig = best_match_column(list(df_original.columns), ["E-mail", "Email", "Mail"])
+    col_email_err = best_match_column(list(df_error.columns), ["E-mail", "Email", "Mail"])
 
-        log("Step 3: Copy Dataframes")
-        df_temp_orig = df_original.copy()
-        df_temp_err = df_error.copy()
+    # Se não temos nem telefone nem email compativeis, abortar
+    if (not col_phone_orig or not col_phone_err) and (not col_email_orig or not col_email_err):
+        return df_original, pd.DataFrame(), stats 
 
-        log("Step 4: Apply Get Key")
-        # Breakdown one-liner to check for ambiguity
-        df_temp_orig["_MATCH_KEY"] = df_temp_orig[col_whats_orig].apply(get_key)
-        df_temp_err["_MATCH_KEY"] = df_temp_err[col_whats_err].apply(get_key)
+    # --- 2. Preparação de Dados ---
+    df_temp_orig = df_original.copy()
+    df_temp_err = df_error.copy()
+    
+    # Helpers de Normalização
+    def norm_phone(val):
+        try:
+            val, _ = format_phone_for_whatsapp_business(val, include_country_code=False)
+            return val if val else None
+        except: return None
         
-        log("Step 5: Init Duplicate Mask")
-        # Inicialização explicita alinhada
-        is_duplicate = pd.Series(False, index=df_temp_err.index)
-        
-        if reason_col and reason_col != "":
-            log("Step 6: Build Duplicate Mask")
-            # Extraindo a coluna para variavel temporaria para teste
-            col_series = df_temp_err[reason_col].astype(str).str.lower()
-            
-            log("Step 6b: Str Contains Check")
-            mask = col_series.str.contains("duplicidade|duplicate|já existe|cadastrado", na=False, regex=True)
-            
-            log("Step 6c: Cast to Bool")
-            is_duplicate = mask.fillna(False).astype(bool)
-        
-        log("Step 7: Filter Duplicates")
-        keys_duplicates = df_temp_err.loc[is_duplicate, "_MATCH_KEY"].unique()
-        keys_duplicates = [k for k in keys_duplicates if k != "MISSING"]
-        
-        log("Step 8: Filter Other Errors")
-        keys_errors_other = df_temp_err.loc[~is_duplicate, "_MATCH_KEY"].unique()
-        keys_errors_other = [k for k in keys_errors_other if k != "MISSING"]
-        
-        stats["duplicates_removed"] = len(keys_duplicates)
-        
-        log("Step 9: Calculate Safe Keys")
-        all_error_keys = set(df_temp_err["_MATCH_KEY"].unique()) - {"MISSING"}
-        
-        log("Step 10: Generate DF Safe")
-        mask_safe = ~df_temp_orig["_MATCH_KEY"].isin(all_error_keys)
-        # Casting mask_safe to bool explicit just in case
-        mask_safe = mask_safe.astype(bool)
-        
-        df_safe = df_temp_orig[mask_safe].copy()
-        if "_MATCH_KEY" in df_safe.columns:
-            df_safe.drop(columns=["_MATCH_KEY"], inplace=True)
-            
-        log("Step 11: Generate Manual Fix")
-        mask_fix = df_temp_orig["_MATCH_KEY"].isin(keys_errors_other) & (df_temp_orig["_MATCH_KEY"] != "MISSING")
-        mask_fix = mask_fix.astype(bool)
-        
-        df_manual_fix = df_temp_orig[mask_fix].copy()
-        
-        log("Step 12: Map Reasons")
-        if reason_col and reason_col != "":
-            # Cria mapa Key -> Reason safely
-            temp_dedup = df_temp_err.drop_duplicates(subset=["_MATCH_KEY"])
-            reason_map = temp_dedup.set_index("_MATCH_KEY")[reason_col]
-            df_manual_fix["MOTIVO_ERRO"] = df_manual_fix["_MATCH_KEY"].map(reason_map)
-            
-            log("Step 13: Reorder Cols")
-            cols = ["MOTIVO_ERRO"] + [c for c in df_manual_fix.columns if c != "MOTIVO_ERRO" and c != "_MATCH_KEY"]
-            df_manual_fix = df_manual_fix[cols]
-        
-        if "_MATCH_KEY" in df_manual_fix.columns:
-            df_manual_fix.drop(columns=["_MATCH_KEY"], inplace=True)
-            
-        stats["manual_fix_needed"] = len(df_manual_fix)
-        stats["safe_total"] = len(df_safe)
-        
-        log("DONE")
-        return df_safe, df_manual_fix, stats
+    def norm_email(val):
+        try:
+            s_val = str(val).strip().lower()
+            return s_val if "@" in s_val else None
+        except: return None
 
-    except Exception as e:
-        error_msg = f"CRITICAL FAILURE AT STEP: {debug_log[-1]} | ERROR: {str(e)} | HISTORY: {debug_log}"
-        # Importante: Re-raise como ValueError para aparecer bonito no Streamlit se for o caso
-        raise ValueError(error_msg) from e
+    # Gerar Chaves
+    df_temp_orig["_KEY_PHONE"] = df_temp_orig[col_phone_orig].apply(norm_phone) if col_phone_orig else None
+    df_temp_err["_KEY_PHONE"] = df_temp_err[col_phone_err].apply(norm_phone) if col_phone_err else None
+    
+    df_temp_orig["_KEY_EMAIL"] = df_temp_orig[col_email_orig].apply(norm_email) if col_email_orig else None
+    df_temp_err["_KEY_EMAIL"] = df_temp_err[col_email_err].apply(norm_email) if col_email_err else None
+
+    # --- 3. Identificação de Erros ---
+    # Identificar quais linhas do arquivo de ERRO são Duplicatas vs Outros
+    is_duplicate_mask = pd.Series(False, index=df_temp_err.index)
+    if reason_col:
+        col_series = df_temp_err[reason_col].astype(str).str.lower()
+        is_duplicate_mask = col_series.str.contains("duplicidade|duplicate|já existe|cadastrado", na=False, regex=True)
+        is_duplicate_mask = is_duplicate_mask.fillna(False).astype(bool)
+
+    # Separa os DataFrames de erro
+    df_err_dupes = df_temp_err[is_duplicate_mask]
+    df_err_others = df_temp_err[~is_duplicate_mask]
+    
+    stats["duplicates_removed"] = len(df_err_dupes)
+
+    # --- 4. Cruzamento (Matching) ---
+    # Queremos encontrar quais linhas do ORIGINAL correspondem aos erros.
+    # Estratégia: Match Phone OR Match Email
+    
+    # Conjuntos de chaves de erro (para exclusão rápida)
+    err_phones = set(df_temp_err["_KEY_PHONE"].dropna().unique())
+    err_emails = set(df_temp_err["_KEY_EMAIL"].dropna().unique())
+    
+    # Conjuntos específicos de "Outros Erros" (para ajuste manual)
+    fix_phones = set(df_err_others["_KEY_PHONE"].dropna().unique())
+    fix_emails = set(df_err_others["_KEY_EMAIL"].dropna().unique())
+    
+    # Função para verificar se uma linha do original deve ser marcada
+    def check_match(row, target_phones, target_emails):
+        p = row.get("_KEY_PHONE")
+        e = row.get("_KEY_EMAIL")
+        if p and p in target_phones: return True
+        if e and e in target_emails: return True
+        return False
+
+    # (A) Identificar SAFE vs ERROR no Original
+    # Uma linha é ERROR se seu telefone OU email estiver no conjunto de erros totais
+    # Otimização vetorizada
+    mask_is_error = pd.Series(False, index=df_temp_orig.index)
+    
+    if err_phones:
+        mask_is_error |= df_temp_orig["_KEY_PHONE"].isin(err_phones)
+    if err_emails:
+        mask_is_error |= df_temp_orig["_KEY_EMAIL"].isin(err_emails)
+    
+    df_safe = df_temp_orig[~mask_is_error].copy()
+    
+    # (B) Identificar MANUAL FIX (Apenas os que não são duplicatas)
+    mask_is_fix = pd.Series(False, index=df_temp_orig.index)
+    if fix_phones:
+        mask_is_fix |= df_temp_orig["_KEY_PHONE"].isin(fix_phones)
+    if fix_emails:
+        mask_is_fix |= df_temp_orig["_KEY_EMAIL"].isin(fix_emails)
+        
+    df_manual_fix = df_temp_orig[mask_is_fix].copy()
+    
+    # --- 5. Enriquecimento (Motivo) ---
+    if reason_col and not df_manual_fix.empty:
+        # Criar mapas de motivo
+        # Prioridade para telefone
+        map_phone = df_err_others.dropna(subset=["_KEY_PHONE"]).drop_duplicates("_KEY_PHONE").set_index("_KEY_PHONE")[reason_col]
+        map_email = df_err_others.dropna(subset=["_KEY_EMAIL"]).drop_duplicates("_KEY_EMAIL").set_index("_KEY_EMAIL")[reason_col]
+        
+        def get_reason(row):
+            p = row.get("_KEY_PHONE")
+            e = row.get("_KEY_EMAIL")
+            res = None
+            if p: res = map_phone.get(p)
+            if not res and e: res = map_email.get(e)
+            return res
+            
+        df_manual_fix["MOTIVO_ERRO"] = df_manual_fix.apply(get_reason, axis=1)
+        
+        # Reordenar colunas
+        cols = ["MOTIVO_ERRO"] + [c for c in df_manual_fix.columns if c != "MOTIVO_ERRO" and not c.startswith("_KEY_")]
+        df_manual_fix = df_manual_fix[cols]
+
+    stats["manual_fix_needed"] = len(df_manual_fix)
+    stats["safe_total"] = len(df_safe)
+    
+    # Limpeza de colunas auxiliares
+    for df in [df_safe, df_manual_fix]:
+        drop_cols = [c for c in df.columns if c.startswith("_KEY_")]
+        if drop_cols:
+            df.drop(columns=drop_cols, inplace=True)
+            
+    return df_safe, df_manual_fix, stats
