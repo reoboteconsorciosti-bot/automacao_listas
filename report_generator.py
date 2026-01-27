@@ -1097,15 +1097,65 @@ def aba_automacao_pessoas_agendor():
                 elif len(primeiro_nome) > 3 and primeiro_nome in fname_norm:
                     detected_consultants.append(consultor)
             
-            # Remove duplicatas preservando ordem
+                # Check 2: Apenas primeiro nome (se tiver mais de 3 letras para evitar noise)
+                elif len(primeiro_nome) > 3 and primeiro_nome in fname_norm:
+                    detected_consultants.append(consultor)
+            
+            # --- Nova Lógica: Extração de Cargo/Nicho do Nome do Arquivo ---
+            # Ex: EMPRESARIOS_MS_RENATA_2026 -> Cargo: "EMPRESARIOS MS", Nicho: "EMPRESARIOS MS"
+            # Lógica: Pegar tudo O QUE VEM ANTES do primeiro consultor encontrado.
+            
+            metadata_prefix = ""
+            if detected_consultants:
+                # Encontrar onde o primeiro consultor aparece no nome do arquivo original (case insensitive search)
+                fname_original = uploaded_file.name
+                first_match_idx = float('inf')
+                
+                # Normaliza para busca segura
+                fname_lower = fname_original.lower().replace('-', '_')
+                
+                # Estratégia: Split por underscore e ver qual pedaço dá match com consultor
+                parts = fname_lower.split('_')
+                
+                # Identificar índice do pedaço que é um consultor
+                found_part_idx = -1
+                for i, part in enumerate(parts):
+                    # Verifica se esse pedaço é um consultor detectado (parcial ou total)
+                    # Normaliza part
+                    p_norm = normalize_txt(part)
+                    for c in detected_consultants:
+                        c_norm = normalize_txt(c).split()[0] # Primeiro nome do consultor
+                        if c_norm in p_norm and len(p_norm) > 3:
+                            found_part_idx = i
+                            break
+                    if found_part_idx != -1:
+                        break
+                
+                # Se achou um consultor nos pedaços e não é o primeiro (tem prefixo antes)
+                if found_part_idx > 0:
+                    prefix_parts = parts[:found_part_idx]
+                    # Reconstrói texto, limpando e upper
+                    metadata_prefix = " ".join(prefix_parts).upper().strip()
+            
+            # Remove duplicatas preservando ordem (Consultores)
             detected_consultants = sorted(list(set(detected_consultants)))
             
+            detected_msg = []
             if detected_consultants:
-                st.toast(f"🤖 Consultores detectados no nome do arquivo: {', '.join(detected_consultants)}", icon="🕵️")
+                detected_msg.append(f"Consultores: {', '.join(detected_consultants)}")
                 # Atualiza os widgets via Session State
                 st.session_state["dist_mode_agendor"] = "Distribuir APENAS para..."
                 st.session_state["include_agendor"] = detected_consultants
-                st.session_state["auto_detected"] = True # Flag visual opcional
+            
+            if metadata_prefix:
+                detected_msg.append(f"Cargo/Nicho: {metadata_prefix}")
+                # Atualizar Session State dos campos de Texto
+                st.session_state["cargo_agendor"] = metadata_prefix
+                st.session_state["nicho_agendor_input"] = metadata_prefix
+                
+            if detected_msg:
+                st.toast(f"🤖 Detectado no Arquivo:\n" + "\n".join(detected_msg), icon="🕵️")
+                st.session_state["auto_detected"] = True
 
 
         st.subheader("Opções de Filtragem e Distribuição")
@@ -1132,7 +1182,11 @@ def aba_automacao_pessoas_agendor():
             st.success(f"{len(effective_consultores)} consultores receberão os leads.")
 
         st.subheader("Configurações Adicionais para Agendor")
-        default_cargo = st.text_input("Cargo Padrão", value="Lead Automovel", help="Cargo a ser atribuído aos leads no Agendor.")
+        # Inicializa session_state se necessário para Cargo Padrão
+        if "cargo_agendor" not in st.session_state:
+            st.session_state.cargo_agendor = "Lead Automovel"
+        
+        default_cargo = st.text_input("Cargo Padrão", key="cargo_agendor", help="Cargo a ser atribuído aos leads no Agendor.")
         
         # --- Helper para criar Toggle estilo "Segmented Control" (Pílula) ---
         def create_toggle(label, options, default, key):
@@ -1169,7 +1223,11 @@ def aba_automacao_pessoas_agendor():
         else:
             col_uf = st.selectbox("Selecione a coluna de UF do arquivo:", options=[""] + df_leads_cols, key="col_uf_select")
             
-        nicho_valor = st.text_input("Nicho (para nome do arquivo)", value="GERAL", help="Valor do nicho para o nome do arquivo de exportação (ex: AUTOMOVEIS, IMOVEIS).")
+            
+        if "nicho_agendor_input" not in st.session_state:
+             st.session_state.nicho_agendor_input = "GERAL"
+
+        nicho_valor = st.text_input("Nicho (para nome do arquivo)", key="nicho_agendor_input", help="Valor do nicho para o nome do arquivo de exportação (ex: AUTOMOVEIS, IMOVEIS).")
 
         st.subheader("Mapeamento de Colunas")
         st.info("Selecione as colunas do seu arquivo que correspondem aos campos esperados.")
