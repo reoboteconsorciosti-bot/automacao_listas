@@ -1063,9 +1063,50 @@ def aba_automacao_pessoas_agendor():
             
         df_leads_cols = df_raw_leads.columns.tolist() # Ensure this is defined for later use
 
-        # Guarda o arquivo gerado para uso posterior (ex: Handoff)
         if 'generated_pessoas_files' not in st.session_state:
             st.session_state.generated_pessoas_files = {}
+
+        # --- Lógica de Detecção Automática de Consultores no Nome do Arquivo ---
+        # Só executa se o arquivo mudou para não sobrescrever a escolha do usuário
+        if st.session_state.get('last_processed_filename') != uploaded_file.name:
+            st.session_state.last_processed_filename = uploaded_file.name
+            
+            # Carregar consultores para busca
+            consultores_db = carregar_consultores()
+            consultores_nomes = sorted([c["consultor"] for c in consultores_db])
+            
+            # Normalização simples para busca (remove acentos e lowercase)
+            def normalize_txt(txt):
+                import unicodedata
+                return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn').lower()
+            
+            fname_norm = normalize_txt(uploaded_file.name)
+            detected_consultants = []
+            
+            for consultor in consultores_nomes:
+                # Busca pelo primeiro nome (mais comum) ou nome completo
+                # Evita falsos positivos (ex: "Ana" em "Banana") verificando limites se possivel,
+                # mas aqui faremos check simples primeiro: se o nome > 3 letras e está na string.
+                c_norm = normalize_txt(consultor)
+                primeiro_nome = c_norm.split()[0]
+                
+                # Check 1: Nome completo no arquivo
+                if c_norm in fname_norm:
+                    detected_consultants.append(consultor)
+                # Check 2: Apenas primeiro nome (se tiver mais de 3 letras para evitar noise)
+                elif len(primeiro_nome) > 3 and primeiro_nome in fname_norm:
+                    detected_consultants.append(consultor)
+            
+            # Remove duplicatas preservando ordem
+            detected_consultants = sorted(list(set(detected_consultants)))
+            
+            if detected_consultants:
+                st.toast(f"🤖 Consultores detectados no nome do arquivo: {', '.join(detected_consultants)}", icon="🕵️")
+                # Atualiza os widgets via Session State
+                st.session_state["dist_mode_agendor"] = "Distribuir APENAS para..."
+                st.session_state["include_agendor"] = detected_consultants
+                st.session_state["auto_detected"] = True # Flag visual opcional
+
 
         st.subheader("Opções de Filtragem e Distribuição")
 
