@@ -1239,13 +1239,16 @@ def aba_automacao_pessoas_agendor():
             force_split = st.checkbox("Forçar divisão em lotes mesmo com 1 consultor", value=False, key="force_split_single")
             leads_por_consultor = st.number_input("Número de leads por consultor", min_value=1, value=50, disabled=not force_split)
             if not force_split:
-                st.info("Apenas 1 consultor selecionado — por padrão ele receberá todos os leads. Marque a opção acima para dividir em lotes.")
+            if not force_split:
+                st.caption("ℹ️ **Nota:** Com apenas 1 consultor, todos os leads serão atribuídos a ele. Para dividir em lotes menores, marque a opção acima.")
         else:
             leads_por_consultor = st.number_input("Número de leads por consultor", min_value=1, value=50)
 
         if st.button("Gerar Arquivo 'Pessoas'"):
-            with st.spinner("Processando... Por favor, aguarde."):
+            # Use st.status for a cleaner, collapsible log
+            with st.status("Iniciando processamento...", expanded=True) as status:
                 try:
+                    status.write("Validando colunas...")
                     # Validate NOME mapping before proceeding
                     if not user_col_mapping["NOME"]:
                         st.warning("A coluna 'NOME' é obrigatória para a distribuição de leads.")
@@ -1272,7 +1275,11 @@ def aba_automacao_pessoas_agendor():
                         df_leads_mapped["Whats"] = df_leads_mapped["Whats"].apply(clean_phone_number)
                         df_leads_mapped.dropna(subset=["Whats"], inplace=True)
                         final_rows = len(df_leads_mapped)
-                        st.info(f"{initial_rows - final_rows} linhas foram removidas por não conterem um número de WhatsApp válido.")
+                        final_rows = len(df_leads_mapped)
+                        if initial_rows - final_rows > 0:
+                            status.write(f"⚠️ {initial_rows - final_rows} linhas removidas (WhatsApp inválido/vazio).")
+                        else:
+                            status.write("✅ Nenhuma linha removida (Todos WhatsApps válidos).")
                     else:
                         st.warning("A coluna 'Whats' não foi mapeada. Nenhuma filtragem por WhatsApp foi aplicada.")
 
@@ -1296,7 +1303,7 @@ def aba_automacao_pessoas_agendor():
                     # Deduplicate by WhatsApp
                     if "Whats" in df_leads_mapped.columns:
                         df_leads_mapped.drop_duplicates(subset=["Whats"], keep='first', inplace=True)
-                        st.info(f"Leads após desduplicação por WhatsApp: {len(df_leads_mapped)}")
+                        status.write(f"✅ Desduplicação concluída. Leads únicos: {len(df_leads_mapped)}")
 
                     # Prepare for Agendor output
                     colunas_output = [
@@ -1497,7 +1504,16 @@ def aba_automacao_pessoas_agendor():
                     st.session_state.last_agendor_df = df_consolidated_output.copy()
                     st.session_state.last_agendor_col_mapping = user_col_mapping.copy()
 
-                    st.success(f"Processo concluído! {len(generated_files)} arquivo(s) de pessoas para Agendor foram gerados.")
+                    st.session_state.last_agendor_col_mapping = user_col_mapping.copy()
+
+                    status.update(label="Processo Concluído com Sucesso!", state="complete", expanded=False)
+                    
+                    # Dashboard de Resultados (Visual Limpo)
+                    st.divider()
+                    m1, m2 = st.columns(2)
+                    m1.metric("Arquivos Gerados", len(generated_files))
+                    m2.metric("Total de Leads Processados", total_leads)
+                    st.divider()
 
                     # Opções de Download
                     col1, col2 = st.columns(2)
