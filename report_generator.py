@@ -1507,69 +1507,72 @@ def aba_automacao_pessoas_agendor():
                     st.session_state.last_agendor_col_mapping = user_col_mapping.copy()
 
                     status.update(label="Processo Concluído com Sucesso!", state="complete", expanded=False)
-                    
-                    # Dashboard de Resultados (Visual Limpo)
-                    st.divider()
-                    m1, m2 = st.columns(2)
-                    m1.metric("Arquivos Gerados", len(generated_files))
-                    m2.metric("Total de Leads Processados", total_leads)
-                    st.divider()
-
-                    # Opções de Download
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        # Se for apenas um arquivo, oferece o download direto
-                        if len(generated_files) == 1:
-                            file_name, file_data = list(generated_files.items())[0]
-                            st.download_button(
-                                label=f"Baixar Arquivo para Agendor (.xlsx)",
-                                data=file_data,
-                                file_name=file_name,
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                key="download_single_agendor"
-                            )
-                        # Se forem vários arquivos, agrupa em um ZIP
-                        else:
-                            zip_buffer = io.BytesIO()
-                            with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
-                                for file_name, file_data in generated_files.items():
-                                    # Extrai o nome do consultor do nome do arquivo para encontrar a equipe
-                                    parts = file_name.split('_')
-                                    consultor_nome_no_arquivo = ""
-                                    if len(parts) > 3:
-                                        consultor_nome_no_arquivo = parts[-2].upper()
-
-                                    nome_equipe = "Outros" # Padrão
-                                    # Buscar equipe do consultor via JSON
-                                    for equipe in carregar_equipes():
-                                        for consultor in equipe["consultores"]:
-                                            if consultor.split(' ')[0].upper() == consultor_nome_no_arquivo:
-                                                nome_equipe = equipe["nome"]
-                                                break
-                                    zip_file.writestr(f"{nome_equipe}/{file_name}", file_data)
-                            
-                            zip_filename = f"Pessoas_Agendor_Distribuicao_{datetime.now().strftime('%d-%m-%Y')}.zip"
-                            st.download_button(
-                                label="Baixar Todos os Arquivos (ZIP)",
-                                data=zip_buffer.getvalue(),
-                                file_name=zip_filename,
-                                mime="application/zip",
-                                key="download_zip_agendor"
-                            )
-                    
-                    # Botão para Handoff
-                    with col2:
-                        if st.session_state.get('generated_pessoas_files') and st.button("Continuar e Gerar Negócios ➡️"):
-                            st.session_state.handoff_active = True
-                            st.session_state.source_for_negocios = 'handoff'
-                            # Mensagens para guiar o usuário em vez de rerun
-                            st.success("✅ Leads prontos para a próxima etapa!")
-                            st.info("ℹ️ Agora, clique na aba 'Gerador de Negócios para Robôs' para gerar os arquivos de negócios.")
-
+            
                 except Exception as e:
                     import traceback
                     st.error(f"Ocorreu um erro durante o processamento: {e}")
                     st.code(traceback.format_exc())
+
+            # Dashboard de Resultados (Visual Limpo) - Fora do status para visibilidade imediata
+            st.divider()
+            m1, m2 = st.columns(2)
+            if 'generated_files' in  locals():
+                m1.metric("Arquivos Gerados", len(generated_files))
+            if 'total_leads' in locals():
+                m2.metric("Total de Leads Processados", total_leads)
+            st.divider()
+
+            # Opções de Download
+            if 'generated_files' in locals() and generated_files:
+                col1, col2 = st.columns(2)
+                with col1:
+                    # Se for apenas um arquivo, oferece o download direto
+                    if len(generated_files) == 1:
+                        file_name, file_data = list(generated_files.items())[0]
+                        st.download_button(
+                            label=f"Baixar Arquivo para Agendor (.xlsx)",
+                            data=file_data,
+                            file_name=file_name,
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            key="download_single_agendor"
+                        )
+                    # Se forem vários arquivos, agrupa em um ZIP
+                    else:
+                        zip_buffer = io.BytesIO()
+                        with zipfile.ZipFile(zip_buffer, "a", zipfile.ZIP_DEFLATED, False) as zip_file:
+                            for file_name, file_data in generated_files.items():
+                                # Extrai o nome do consultor do nome do arquivo para encontrar a equipe
+                                parts = file_name.split('_')
+                                consultor_nome_no_arquivo = ""
+                                if len(parts) > 3:
+                                    consultor_nome_no_arquivo = parts[-2].upper()
+
+                                nome_equipe = "Outros" # Padrão
+                                # Buscar equipe do consultor via JSON
+                                for equipe in carregar_equipes():
+                                    for consultor in equipe["consultores"]:
+                                        if consultor.split(' ')[0].upper() == consultor_nome_no_arquivo:
+                                            nome_equipe = equipe["nome"]
+                                            break
+                                zip_file.writestr(f"{nome_equipe}/{file_name}", file_data)
+                        
+                        zip_filename = f"Pessoas_Agendor_Distribuicao_{datetime.now().strftime('%d-%m-%Y')}.zip"
+                        st.download_button(
+                            label="Baixar Todos os Arquivos (ZIP)",
+                            data=zip_buffer.getvalue(),
+                            file_name=zip_filename,
+                            mime="application/zip",
+                            key="download_zip_agendor"
+                        )
+                
+                # Botão para Handoff
+                with col2:
+                    st.success("✅ Leads prontos para a próxima etapa!")
+                    if st.session_state.get('generated_pessoas_files') and st.button("Continuar e Gerar Negócios ➡️"):
+                        st.session_state.handoff_active = True
+                        st.session_state.source_for_negocios = 'handoff'
+                        # Mensagens para guiar o usuário em vez de rerun
+                        st.info("ℹ️ Agora, clique na aba 'Gerador de Negócios para Robôs' para gerar os arquivos de negócios.")
 
 
     # --- Seção de Reconciliação (Ciclo Fechado) ---
