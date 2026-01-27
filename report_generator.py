@@ -1233,12 +1233,12 @@ def aba_automacao_pessoas_agendor():
             )
             user_col_mapping[col] = selected_col
 
-            # Lógica para input de leads por consultor e divisão forçada
-            force_split = False
+        # Lógica para input de leads por consultor e divisão forçada
+        force_split = False
         if len(effective_consultores) == 1:
             force_split = st.checkbox("Forçar divisão em lotes mesmo com 1 consultor", value=False, key="force_split_single")
             leads_por_consultor = st.number_input("Número de leads por consultor", min_value=1, value=50, disabled=not force_split)
-            if not force_split:
+            
             if not force_split:
                 st.caption("ℹ️ **Nota:** Com apenas 1 consultor, todos os leads serão atribuídos a ele. Para dividir em lotes menores, marque a opção acima.")
         else:
