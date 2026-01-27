@@ -1245,7 +1245,8 @@ def aba_automacao_pessoas_agendor():
             "Cidade": ["Cidade"],
             "CEP": ["CEP", "Cep", "cep", "Codigo Postal", "Código Postal", "CodigoPostal"],
             "Razao Social": ["Razao Social", "Razão Social", "Razao", "RAZAO_SOCIAL"],
-            "Fantasia": ["Fantasia", "Nome Fantasia", "NomeFantasia"],
+            # Fix: Avoid "Nome Fantasia" to prevent conflict with "Nome" column
+            "Fantasia": ["Fantasia", "NomeFantasia", "Apelido"],
             "Complemento": ["Complemento", "Complemento Endereco", "Comp"]
         }
 
@@ -1427,6 +1428,8 @@ def aba_automacao_pessoas_agendor():
                             linha = {col: "" for col in colunas_output}
                             linha.update({
                                 "Nome": row.get("NOME", ""),
+                                # Fix: Populate Empresa with Fantasia or Razao Social
+                                "Empresa": row.get("Fantasia") or row.get("Razao Social") or "",
                                 "Cargo": default_cargo,
                                 "Usuário responsável": consultor_formatado,
                                 "Categoria": "Lead",
