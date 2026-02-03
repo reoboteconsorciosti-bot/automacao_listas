@@ -247,7 +247,16 @@ def aba_higienizacao():
     uploaded_file = st.file_uploader("Faça upload do arquivo CSV Assertiva ou Lemit", type=["csv"], key="higienizacao_uploader")
     
     if uploaded_file:
-            df_raw, structure_type, err = load_data(uploaded_file)
+    if uploaded_file:
+            # --- Reset logic for new files ---
+            if st.session_state.get("last_uploaded_clean_filename") != uploaded_file.name:
+                st.session_state.structure_type = "Não Detectada"
+                st.session_state.manual_df = None
+                st.session_state.last_uploaded_clean_filename = uploaded_file.name
+                st.session_state.df_clean = pd.DataFrame() # Reset clean df
+                st.session_state.missing_cols = []
+
+            df_raw, detected_structure, err = load_data(uploaded_file)
             if err:
                 st.error(err)
                 return
@@ -255,24 +264,141 @@ def aba_higienizacao():
             # DEBUG: Imprime as colunas do DataFrame carregado
             print(f"DEBUG: Colunas do DataFrame carregado: {df_raw.columns.tolist()}")
 
-            st.session_state.structure_type = structure_type # Atualiza o valor após a detecção
+            # Se ainda não definimos a estrutura (primeira carga) ou se o detector achou algo diferente do "Manual" (caso não seja manual)
+            if st.session_state.structure_type == "Não Detectada":
+                 st.session_state.structure_type = detected_structure
 
-            st.success(f"Planilha {st.session_state.structure_type} Detectada")
+            # === BLOCO DE TRATAMENTO PARA ESTRUTURA DESCONHECIDA (Mapeamento Manual) ===
+            if st.session_state.structure_type == "Desconhecida":
+                st.warning("A estrutura do arquivo não foi identificada automaticamente como Assertiva ou Lemit.")
+                st.info("Por favor, realize o mapeamento manual das colunas abaixo para prosseguir. O sistema tentará sugerir as melhores correspondências.")
+
+                with st.expander("🛠️ Mapeamento Manual de Colunas", expanded=True):
+                    st.write("**Associe as colunas do seu arquivo aos campos padrões do sistema:**")
+                    
+                    df_cols = df_raw.columns.tolist()
+                    manual_mapping = {}
+                    
+                    # Colunas alvo para mapeamento (baseado em FULL_EXTRACTION_COLS)
+                    # Adicionamos descrições para ajudar o usuário
+                    target_cols_config = {
+                        "Razao": "Razão Social / Nome da Empresa",
+                        "NOME": "Nome da Pessoa / Sócio",
+                        "Logradouro": "Endereço (Rua, Av.)",
+                        "Numero": "Número do Endereço",
+                        "Bairro": "Bairro",
+                        "Cidade": "Cidade",
+                        "UF": "Estado (UF)",
+                        "CEP": "CEP",
+                        "CNPJ": "CNPJ / CPF",
+                        "Whats": "WhatsApp (Principal)",
+                        "CEL": "Celular / Telefone Secundário",
+                        "SOCIO1Nome": "Nome do Sócio 1 (Opcional)",
+                        "SOCIO1Celular1": "Celular do Sócio 1 (Opcional)"
+                    }
+                    
+                    # Vamos iterar sobre FULL_EXTRACTION_COLS para manter a ordem, mas usando apenas as que definimos config
+                    cols_to_map = [c for c in FULL_EXTRACTION_COLS if c in target_cols_config]
+                    
+                    # Container para os selects
+                    cols_ui = st.columns(2)
+                    
+                    selected_values = []
+                    
+                    for i, target_col in enumerate(cols_to_map):
+                        friendly_name = target_cols_config.get(target_col, target_col)
+                        
+                        # Tenta sugestão automática
+                        suggested_col = best_match_column(df_cols, [target_col, friendly_name])
+                        
+                        try:
+                            default_index = df_cols.index(suggested_col) + 1 if suggested_col else 0
+                        except ValueError:
+                            default_index = 0
+                        
+                        with cols_ui[i % 2]:
+                            selected = st.selectbox(
+                                f"{friendly_name} ({target_col})",
+                                options=[""] + df_cols,
+                                index=default_index,
+                                key=f"manual_map_{target_col}"
+                            )
+                            manual_mapping[target_col] = selected
+                            if selected:
+                                selected_values.append(selected)
+
+                    st.info("ℹ️ Certifique-se de não selecionar a mesma coluna de origem para campos diferentes, a menos que seja intencional.")
+
+                    if st.button("Processar Mapeamento Manual", type="primary"):
+                        # Validação de Duplicatas
+                        from collections import Counter
+                        duplicates = [item for item, count in Counter(selected_values).items() if count > 1]
+                        
+                        if duplicates:
+                            st.error(f"Erro: As seguintes colunas foram mapeadas mais de uma vez: {', '.join(duplicates)}. Cada coluna de origem deve corresponder a apenas um campo de destino.")
+                            return
+
+                        # Validação de Campos Mínimos (Pelo menos um Nome e um Telefone ou Endereço)
+                        has_id = manual_mapping.get("Razao") or manual_mapping.get("NOME")
+                        has_contact = manual_mapping.get("Whats") or manual_mapping.get("CEL") or manual_mapping.get("Logradouro")
+                        
+                        if not has_id:
+                            st.error("Erro: É necessário mapear pelo menos 'Razão Social' ou 'Nome da Pessoa'.")
+                            return
+                        
+                        # Processamento do Mapeamento
+                        try:
+                            df_mapped = df_raw.copy()
+                            rename_dict = {v: k for k, v in manual_mapping.items() if v}
+                            
+                            # check if valid columns
+                            valid_rename = {}
+                            for v, k in rename_dict.items():
+                                if v in df_mapped.columns:
+                                     valid_rename[v] = k
+                            
+                            # Renomeia as colunas
+                            df_mapped.rename(columns=valid_rename, inplace=True)
+                            
+                            # Armazena no estado
+                            st.session_state.manual_df = df_mapped
+                            st.session_state.structure_type = "Manual"
+                            st.success("Mapeamento aplicado com sucesso! Processando...")
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"Erro ao processar o mapeamento: {e}")
+                            logging.exception("Erro no processamento manual")
+                            return
+
+                return # Interrompe a execução aqui enquanto espera o usuário mapear
+
+            # === FIM BLOCO Mapeamento ===
+
+            # Determina qual DataFrame usar (Raw ou Manual)
+            if st.session_state.structure_type == "Manual":
+                st.success("Processando com Layout Manual Definido.")
+                df_to_process = st.session_state.manual_df
+            else:
+                st.success(f"Planilha {st.session_state.structure_type} Detectada")
+                df_to_process = df_raw
+
 
             # Determina as colunas essenciais com base na estrutura detectada (para LOG)
             if st.session_state.structure_type == "Assertiva":
                 st.info(f"Usando colunas de extração Assertiva.")
             elif st.session_state.structure_type == "Lemit":
                  st.info(f"Usando colunas de extração Lemit.")
+            elif st.session_state.structure_type == "Manual":
+                 pass # Já informado
             else:
-                st.error("Estrutura de planilha desconhecida. Não é possível prosseguir com a higienização.")
-                st.session_state.df_clean = pd.DataFrame() # Garante que df_clean seja um DataFrame vazio
-                st.session_state.missing_cols = [] # Garante que missing_cols seja uma lista vazia
-                return # Sai da função para evitar o erro de desempacotamento
+                # Fallback para qualquer outro caso estranho
+                st.error("Estrutura não suportada.")
+                return 
 
             # Chama clean_and_filter_data com FULL_EXTRACTION_COLS para garantir que tentamos pegar tudo que é possível
             # independentemente de ser Lemit ou Assertiva (pois o mapeamento resolve as diferenças)
-            st.session_state.df_clean, st.session_state.missing_cols, _ = clean_and_filter_data(df_raw, essential_cols=FULL_EXTRACTION_COLS)
+            st.session_state.df_clean, st.session_state.missing_cols, _ = clean_and_filter_data(df_to_process, essential_cols=FULL_EXTRACTION_COLS)
 
             if st.session_state.df_clean.empty:
                 st.warning("Atenção: Após a limpeza e filtragem, nenhum dado restou. Verifique os filtros aplicados e o mapeamento das colunas.")
