@@ -373,7 +373,16 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
     df_processed = df_processed[df_processed["Whats"] != ""]
     df_processed = df_processed[df_processed["Whats"].notna()]
     
-    # Remove duplicatas de telefone
+    # --- Lógica de Prevenção de Duplicidade (Whats vs CEL) ---
+    # Se CEL for igual a Whats, limpa CEL para permitir que o fallback (Socio2) funcione ou fique vazio
+    if "Whats" in df_processed.columns and "CEL" in df_processed.columns:
+        # Normaliza para comparação
+        mask_duplicate = (df_processed["CEL"] == df_processed["Whats"]) & (df_processed["CEL"].notna()) & (df_processed["CEL"] != "")
+        if mask_duplicate.any():
+            logging.info(f"Encontrados {mask_duplicate.sum()} casos onde CEL era igual a Whats. Limpando CEL para evitar duplicidade.")
+            df_processed.loc[mask_duplicate, "CEL"] = np.nan
+
+    # Remove duplicatas de telefone (linhas inteiras duplicadas pelo telefone)
     if not df_processed.empty:
         df_processed.drop_duplicates(subset=["Whats"], keep='first', inplace=True)
 
@@ -381,6 +390,14 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
     for col in ["Razao", "Logradouro", "Bairro", "Cidade", "UF", "NOME", "Whats", "CEL"]:
         if col in df_processed.columns:
             df_processed[col] = df_processed[col].fillna('').astype(str).str.strip()
+
+    # --- Verificação Final de Duplicidade (Pós-Processamento) ---
+    if "Whats" in df_processed.columns and "CEL" in df_processed.columns:
+         # Garante que não sobrou nenhum duplicado exato
+         mask_final_dup = (df_processed["CEL"] == df_processed["Whats"]) & (df_processed["CEL"] != "")
+         if mask_final_dup.any():
+             logging.warning(f"Removendo {mask_final_dup.sum()} duplicatas finais de CEL iguais a Whats.")
+             df_processed.loc[mask_final_dup, "CEL"] = ""
 
     # Seleciona e ordena as colunas para a saída final
     # Garante que todas as colunas de FIXED_OUTPUT_ORDER existam no final, mesmo que vazias
