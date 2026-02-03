@@ -305,8 +305,16 @@ def aba_higienizacao():
                     for i, target_col in enumerate(cols_to_map):
                         friendly_name = target_cols_config.get(target_col, target_col)
                         
-                        # Tenta sugestão automática
-                        suggested_col = best_match_column(df_cols, [target_col, friendly_name])
+                        # Define candidatos extras para melhorar a sugestão
+                        extra_candidates = []
+                        if target_col == "Logradouro":
+                            extra_candidates = ["Rua", "Endereco", "Endereço"]
+                        elif target_col == "UF":
+                            extra_candidates = ["Estado"]
+                        
+                        # Tenta sugestão automática combinando tudo
+                        all_candidates = [target_col, friendly_name] + extra_candidates
+                        suggested_col = best_match_column(df_cols, all_candidates)
                         
                         try:
                             default_index = df_cols.index(suggested_col) + 1 if suggested_col else 0
