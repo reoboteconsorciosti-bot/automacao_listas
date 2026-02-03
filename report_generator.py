@@ -247,7 +247,6 @@ def aba_higienizacao():
     uploaded_file = st.file_uploader("Faça upload do arquivo CSV Assertiva ou Lemit", type=["csv"], key="higienizacao_uploader")
     
     if uploaded_file:
-    if uploaded_file:
             # --- Reset logic for new files ---
             if st.session_state.get("last_uploaded_clean_filename") != uploaded_file.name:
                 st.session_state.structure_type = "Não Detectada"
