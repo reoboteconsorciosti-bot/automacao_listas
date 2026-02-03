@@ -283,17 +283,15 @@ def aba_higienizacao():
                     target_cols_config = {
                         "Razao": "Razão Social / Nome da Empresa",
                         "NOME": "Nome da Pessoa / Sócio",
-                        "Logradouro": "Endereço (Rua, Av.)",
-                        "Numero": "Número do Endereço",
+                        "Logradouro": "Logradouro",
+                        "Numero": "Número",
                         "Bairro": "Bairro",
                         "Cidade": "Cidade",
-                        "UF": "Estado (UF)",
+                        "UF": "UF",
                         "CEP": "CEP",
                         "CNPJ": "CNPJ / CPF",
-                        "Whats": "WhatsApp (Principal)",
-                        "CEL": "Celular / Telefone Secundário",
-                        "SOCIO1Nome": "Nome do Sócio 1 (Opcional)",
-                        "SOCIO1Celular1": "Celular do Sócio 1 (Opcional)"
+                        "Whats": "WhatsApp",
+                        "CEL": "Celular / Telefone Secundário"
                     }
                     
                     # Vamos iterar sobre FULL_EXTRACTION_COLS para manter a ordem, mas usando apenas as que definimos config
@@ -317,7 +315,7 @@ def aba_higienizacao():
                         
                         with cols_ui[i % 2]:
                             selected = st.selectbox(
-                                f"{friendly_name} ({target_col})",
+                                f"{friendly_name}",
                                 options=[""] + df_cols,
                                 index=default_index,
                                 key=f"manual_map_{target_col}"
