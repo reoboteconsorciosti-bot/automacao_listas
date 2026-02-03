@@ -243,8 +243,8 @@ def aba_higienizacao():
         st.session_state.missing_cols = []
 
     st.header("Higienização e Geração de Listas - Assertiva e Lemit")
-    st.info("Faça o upload de um arquivo enriquecido do Lemit ou Assertiva, o retorno será uma lista formatada pdf e o arquivo xlsx.")
-    uploaded_file = st.file_uploader("Faça upload do arquivo CSV Assertiva ou Lemit", type=["csv"], key="higienizacao_uploader")
+    st.info("Faça o upload de um arquivo de dados (CSV ou XLSX). O sistema identificará automaticamente colunas da Assertiva/Lemit ou solicitará mapeamento manual.")
+    uploaded_file = st.file_uploader("Faça upload do arquivo (CSV ou XLSX)", type=["csv", "xlsx"], key="higienizacao_uploader")
     
     if uploaded_file:
             # --- Reset logic for new files ---
