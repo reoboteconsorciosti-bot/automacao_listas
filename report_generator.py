@@ -365,6 +365,13 @@ def aba_higienizacao():
                             # Renomeia as colunas
                             df_mapped.rename(columns=valid_rename, inplace=True)
                             
+                            # --- FILTRAGEM ESTRITA DE COLUNAS ---
+                            # No modo manual, mantemos APENAS as colunas que foram mapeadas pelo usuário.
+                            # As demais são descartadas para evitar que a limpeza automática encontre campos originais não desejados.
+                            cols_to_keep = list(valid_rename.values())
+                            df_mapped = df_mapped[cols_to_keep]
+                            st.info(f"Modo Estrito: {len(cols_to_keep)} colunas mantidas. Colunas não mapeadas foram removidas.")
+                            
                             # Armazena no estado
                             st.session_state.manual_df = df_mapped
                             st.session_state.structure_type = "Manual"
