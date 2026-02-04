@@ -417,5 +417,27 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
     logging.info("DataFrame final antes de retornar:")
     logging.info(df_final.head())
 
+    # --- Remoção Inteligente de Colunas Vazias (Smart Clean) ---
+    # Protocolo: Remover colunas sem dados úteis para otimizar o output.
+    # Invariantes: 'NOME' e 'Whats' jamais serão removidas.
+    cols_to_remove = []
+    structural_cols = ["NOME", "Whats"]
+
+    for col in df_final.columns:
+        if col in structural_cols:
+            continue
+        
+        # Análise de conteúdo: Trata strings vazias e NaNs como "vazio"
+        # O replace(r'^\s*$', ...) garante que strings com apenas espaços também contem como vazio
+        # Se todos os valores forem nulos, a coluna é candidata à remoção.
+        is_empty = df_final[col].replace(r'^\s*$', np.nan, regex=True).isna().all()
+        
+        if is_empty:
+            cols_to_remove.append(col)
+
+    if cols_to_remove:
+        logging.info(f"[SMART CLEAN] Removendo {len(cols_to_remove)} colunas vazias: {cols_to_remove}")
+        df_final.drop(columns=cols_to_remove, inplace=True)
+
     print(f"DEBUG: clean_and_filter_data final return: df_final shape: {df_final.shape if not df_final.empty else 'empty'}, missing: {missing}, structure: {'Structure_Type_Placeholder'}")
     return df_final.reset_index(drop=True), missing, "Structure_Type_Placeholder" # Retorna 3 valores
