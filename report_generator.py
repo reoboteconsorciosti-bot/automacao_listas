@@ -929,9 +929,9 @@ def aba_gerador_negocios_robos():
 
             col3, col4 = st.columns(2)
             with col3:
-                nicho_principal_upload = st.text_input("Nicho Principal (ex: AUTO, MED, EMPR)", value="AUTO", key="nicho_upload")
+                nicho_principal_upload = st.text_input("Nicho Principal (ex: AUTO, MED, EMPR)", value="", key="nicho_upload", placeholder="Ex: EMPR")
             with col4:
-                sufixo_localidade_upload = st.text_input("Sufixo de Localidade (opcional, ex: CG, MS)", value="", key="sufixo_upload")
+                sufixo_localidade_upload = st.text_input("Sufixo de Localidade (opcional, ex: CG, MS)", value="", key="sufixo_upload", placeholder="Ex: CG, MS, MT")
 
             generate_button_disabled = not nome_col or not whats_col
             if generate_button_disabled:
