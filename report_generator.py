@@ -790,6 +790,71 @@ def aba_gerador_negocios_robos():
 
             st.dataframe(df_raw_leads.head())
 
+            # --- Lógica de Detecção Automática de Consultores (Conteúdo e Nome do Arquivo) ---
+            # Só executa se o arquivo mudou para não sobrescrever a escolha do usuário
+            if st.session_state.get('last_processed_negocios_filename') != uploaded_file.name:
+                st.session_state.last_processed_negocios_filename = uploaded_file.name
+                
+                consultores_db = carregar_consultores()
+                # Lista de usuários (login) e nomes de exibição
+                # Normalizamos tudo para minúsculas para comparação
+                map_usuario_to_consultor = {c["usuario"].lower(): c["consultor"] for c in consultores_db}
+                map_nome_to_consultor = {c["consultor"].lower(): c["consultor"] for c in consultores_db}
+                
+                detected_consultant = None
+                detection_source = ""
+
+                # 1. Tentativa pelo CONTEÚDO (Coluna 'Usuário responsável')
+                # Procura por colunas que pareçam ser o responsável
+                possible_resp_cols = [c for c in df_raw_leads.columns if "usuário responsável" in c.lower() or "usuario responsavel" in c.lower() or "responsável" in c.lower()]
+                
+                if possible_resp_cols:
+                    target_col = possible_resp_cols[0]
+                    # Pega os valores únicos da coluna (excluindo vazios)
+                    unique_users = df_raw_leads[target_col].dropna().astype(str).str.strip().str.lower().unique()
+                    
+                    # Se houver apenas 1 usuário (ou um dominante), assumimos que é ele
+                    if len(unique_users) == 1:
+                        val = unique_users[0]
+                        # Tenta mapear pelo 'usuario' (login) ou pelo 'consultor' (nome)
+                        if val in map_usuario_to_consultor:
+                            detected_consultant = map_usuario_to_consultor[val]
+                            detection_source = f"Conteúdo (Usuário: {val})"
+                        elif val in map_nome_to_consultor:
+                            detected_consultant = map_nome_to_consultor[val]
+                            detection_source = f"Conteúdo (Nome: {val})"
+                
+                # 2. Tentativa pelo NOME DO ARQUIVO (Fallback)
+                if not detected_consultant:
+                    def normalize_txt(txt):
+                        import unicodedata
+                        return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn').lower()
+
+                    fname_norm = normalize_txt(uploaded_file.name)
+                    consultores_nomes = sorted([c["consultor"] for c in consultores_db])
+                    
+                    for consultor in consultores_nomes:
+                        c_norm = normalize_txt(consultor)
+                        primeiro_nome = c_norm.split()[0]
+                        
+                        # Check 1: Nome completo no arquivo
+                        if c_norm in fname_norm:
+                            detected_consultant = consultor
+                            detection_source = f"Nome do Arquivo ('{consultor}')"
+                            break
+                        # Check 2: Apenas primeiro nome (se > 3 chars)
+                        elif len(primeiro_nome) > 3 and primeiro_nome in fname_norm:
+                            detected_consultant = consultor
+                            detection_source = f"Nome do Arquivo ('{primeiro_nome}')"
+                            break
+
+                # 3. Aplica a Configuração se detectou
+                if detected_consultant:
+                    st.session_state["dist_mode_negocios"] = "Distribuir APENAS para..."
+                    st.session_state["include_negocios"] = [detected_consultant]
+                    st.toast(f"🤖 Consultor Detectado: {detected_consultant}\nFonte: {detection_source}", icon="🕵️")
+                    st.success(f"Configuração ajustada automaticamente para o consultor detectado: **{detected_consultant}**")
+
             # --- Mapeamento de Colunas ---
             st.subheader("1. Mapeamento de Colunas")
             df_cols = df_raw_leads.columns.tolist()
