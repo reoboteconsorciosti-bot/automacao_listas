@@ -755,15 +755,15 @@ def aba_gerador_negocios_robos():
         st.subheader("Configurações para Geração de Negócios")
         col1, col2 = st.columns(2)
         with col1:
-            negocios_por_consultor = st.number_input("Número de negócios por consultor (por arquivo)", min_value=1, value=20, key="negocios_handoff")
+            negocios_por_consultor = st.number_input("Número de negócios por consultor (por arquivo)", min_value=1, value=20, key="negocios_handoff", placeholder="Ex: 20")
         with col2:
             start_date_negocios = st.date_input("Data de Início para Negócios", value=date.today(), key="date_handoff")
 
         col3, col4 = st.columns(2)
         with col3:
-            nicho_principal = st.text_input("Nicho Principal (ex: AUTO, MED, EMPR)", value="AUTO", key="nicho_handoff")
+            nicho_principal = st.text_input("Nicho Principal (ex: AUTO, MED, EMPR)", value="AUTO", key="nicho_handoff", placeholder="Ex: AUTO")
         with col4:
-            sufixo_localidade = st.text_input("Sufixo de Localidade (opcional, ex: CG, MS)", value="", key="sufixo_handoff")
+            sufixo_localidade = st.text_input("Sufixo de Localidade (opcional, ex: CG, MS)", value="", key="sufixo_handoff", placeholder="Ex: CG")
         
         if st.button("Gerar Arquivos de Negócios", key="btn_gerar_handoff"):
             # A lógica de geração usará `generated_files` do session_state
@@ -1389,7 +1389,7 @@ def aba_automacao_pessoas_agendor():
         if "cargo_agendor" not in st.session_state:
             st.session_state.cargo_agendor = "Lead Automovel"
         
-        default_cargo = st.text_input("Cargo Padrão", key="cargo_agendor", help="Cargo a ser atribuído aos leads no Agendor.")
+        default_cargo = st.text_input("Cargo Padrão", key="cargo_agendor", help="Cargo a ser atribuído aos leads no Agendor.", placeholder="Ex: Lead Automovel")
         
         # --- Helper para criar Toggle estilo "Segmented Control" (Pílula) ---
         def create_toggle(label, options, default, key):
@@ -1410,7 +1410,7 @@ def aba_automacao_pessoas_agendor():
         col_descricao = None
         
         if desc_mode == "Valor Fixo":
-            default_descricao = st.text_area("Digite a Descrição Padrão", value="", help="Esta descrição será usada para todos os leads.")
+            default_descricao = st.text_area("Digite a Descrição Padrão", value="", help="Esta descrição será usada para todos os leads.", placeholder="Ex: Lead quente, ligar asap")
         else:
             col_descricao = st.selectbox("Selecione a coluna de Descrição do arquivo:", options=[""] + df_leads_cols, key="col_descricao_select")
 
@@ -1422,7 +1422,7 @@ def aba_automacao_pessoas_agendor():
         col_uf = None
         
         if uf_mode == "Valor Fixo":
-            default_uf = st.text_input("Digite a UF Padrão", value="MS", max_chars=2, help="UF padrão para os leads.")
+            default_uf = st.text_input("Digite a UF Padrão", value="MS", max_chars=2, help="UF padrão para os leads.", placeholder="Ex: MS")
         else:
             col_uf = st.selectbox("Selecione a coluna de UF do arquivo:", options=[""] + df_leads_cols, key="col_uf_select")
             
@@ -1430,7 +1430,7 @@ def aba_automacao_pessoas_agendor():
         if "nicho_agendor_input" not in st.session_state:
              st.session_state.nicho_agendor_input = "GERAL"
 
-        nicho_valor = st.text_input("Nicho (para nome do arquivo)", key="nicho_agendor_input", help="Valor do nicho para o nome do arquivo de exportação (ex: AUTOMOVEIS, IMOVEIS).")
+        nicho_valor = st.text_input("Nicho (para nome do arquivo)", key="nicho_agendor_input", help="Valor do nicho para o nome do arquivo de exportação (ex: AUTOMOVEIS, IMOVEIS).", placeholder="Ex: AUTOMOVEIS")
 
         st.subheader("Mapeamento de Colunas")
         st.info("Selecione as colunas do seu arquivo que correspondem aos campos esperados.")
