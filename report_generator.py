@@ -796,63 +796,92 @@ def aba_gerador_negocios_robos():
                 st.session_state.last_processed_negocios_filename = uploaded_file.name
                 
                 consultores_db = carregar_consultores()
-                # Lista de usuários (login) e nomes de exibição
-                # Normalizamos tudo para minúsculas para comparação
-                map_usuario_to_consultor = {c["usuario"].lower(): c["consultor"] for c in consultores_db}
-                map_nome_to_consultor = {c["consultor"].lower(): c["consultor"] for c in consultores_db}
                 
                 detected_consultant = None
                 detection_source = ""
 
+                def normalize_txt(txt):
+                    if not isinstance(txt, str): return ""
+                    import unicodedata
+                    return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn').lower().strip()
+
+                # Prepara base de conhecimento de consultores
+                # Mapeia: "eduardo fujiyama" -> "Eduardo Fujiyama", "eduardo" -> "Eduardo Fujiyama", "fujiyama" -> "Eduardo Fujiyama", "eduardo.fujiyama" -> "Eduardo Fujiyama"
+                consultant_map = {}
+                for c in consultores_db:
+                    nome_real = c["consultor"]
+                    usuario = c["usuario"]
+                    
+                    norm_nome = normalize_txt(nome_real)
+                    norm_user = normalize_txt(usuario)
+                    
+                    consultant_map[norm_nome] = nome_real
+                    consultant_map[norm_user] = nome_real
+                    
+                    # Mapear partes do nome se forem unicas (ex: Karen)
+                    parts = norm_nome.split()
+                    if len(parts) > 0:
+                        primeiro_nome = parts[0]
+                        if len(primeiro_nome) > 3: # Evita 'Ana' se tiver muitas Anas (refinar se necessário)
+                             # Só adiciona se não conflitar (se conflitar, remove ou ignora)
+                             # Simplificação: Adiciona, assumindo que primeiro nome é forte indicador
+                             consultant_map[primeiro_nome] = nome_real
+
                 # 1. Tentativa pelo CONTEÚDO (Coluna 'Usuário responsável')
-                # Procura por colunas que pareçam ser o responsável
                 possible_resp_cols = [c for c in df_raw_leads.columns if "usuário responsável" in c.lower() or "usuario responsavel" in c.lower() or "responsável" in c.lower()]
                 
                 if possible_resp_cols:
                     target_col = possible_resp_cols[0]
-                    # Pega os valores únicos da coluna (excluindo vazios)
-                    unique_users = df_raw_leads[target_col].dropna().astype(str).str.strip().str.lower().unique()
+                    # Pega valores únicos, remove vazios e normaliza
+                    unique_users = df_raw_leads[target_col].dropna().astype(str).apply(normalize_txt).unique()
+                    unique_users = [u for u in unique_users if u] # Remove vazios resultantes da normalização
                     
-                    # Se houver apenas 1 usuário (ou um dominante), assumimos que é ele
-                    if len(unique_users) == 1:
-                        val = unique_users[0]
-                        # Tenta mapear pelo 'usuario' (login) ou pelo 'consultor' (nome)
-                        if val in map_usuario_to_consultor:
-                            detected_consultant = map_usuario_to_consultor[val]
-                            detection_source = f"Conteúdo (Usuário: {val})"
-                        elif val in map_nome_to_consultor:
-                            detected_consultant = map_nome_to_consultor[val]
-                            detection_source = f"Conteúdo (Nome: {val})"
-                
+                    if len(unique_users) > 0:
+                        # Tenta dar match em cada usuario encontrado
+                        matches = []
+                        for u in unique_users:
+                            # Tentativa de match exato ou "contém"
+                            if u in consultant_map:
+                                matches.append(consultant_map[u])
+                            else:
+                                # Procura parcial: Se "karen" estiver em "karen landgraf"
+                                for key, val in consultant_map.items():
+                                    if key in u or u in key: # Match flexível
+                                        matches.append(val)
+                                        break
+                        
+                        # Se encontrou um consultor dominante
+                        if matches:
+                            from collections import Counter
+                            most_common = Counter(matches).most_common(1)
+                            if most_common:
+                                detected_consultant = most_common[0][0]
+                                detection_source = f"Conteúdo (Encontrado: {detected_consultant})"
+
                 # 2. Tentativa pelo NOME DO ARQUIVO (Fallback)
                 if not detected_consultant:
-                    def normalize_txt(txt):
-                        import unicodedata
-                        return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn').lower()
-
                     fname_norm = normalize_txt(uploaded_file.name)
-                    consultores_nomes = sorted([c["consultor"] for c in consultores_db])
                     
-                    for consultor in consultores_nomes:
-                        c_norm = normalize_txt(consultor)
-                        primeiro_nome = c_norm.split()[0]
-                        
-                        # Check 1: Nome completo no arquivo
-                        if c_norm in fname_norm:
-                            detected_consultant = consultor
-                            detection_source = f"Nome do Arquivo ('{consultor}')"
-                            break
-                        # Check 2: Apenas primeiro nome (se > 3 chars)
-                        elif len(primeiro_nome) > 3 and primeiro_nome in fname_norm:
-                            detected_consultant = consultor
-                            detection_source = f"Nome do Arquivo ('{primeiro_nome}')"
+                    # Tenta encontrar chaves do mapa no nome do arquivo
+                    # Ordena chaves por tamanho decrescente para pegar "Karen Landgraf" antes de "Karen"
+                    sorted_keys = sorted(consultant_map.keys(), key=len, reverse=True)
+                    
+                    for key in sorted_keys:
+                        if key in fname_norm:
+                            detected_consultant = consultant_map[key]
+                            detection_source = f"Nome do Arquivo ('{key}')"
                             break
 
                 # 3. Aplica a Configuração se detectou
+                if detected_consultant:
                     st.session_state["dist_mode_negocios"] = "Distribuir APENAS para..."
                     st.session_state["include_negocios"] = [detected_consultant]
                     st.toast(f"🤖 Consultor Detectado: {detected_consultant}\nFonte: {detection_source}", icon="🕵️")
                     st.success(f"Configuração ajustada automaticamente para o consultor detectado: **{detected_consultant}**")
+                else:
+                    # Se não detectou, reseta para evitar configs antigas perdidas
+                     st.session_state["dist_mode_negocios"] = "Distribuir para Todos" # Ou padrão desejado
+                     st.session_state["include_negocios"] = []
                 
                 # --- Lógica de Detecção de Nicho e Localidade (Por Nome do Arquivo) ---
                 detected_niche = None
