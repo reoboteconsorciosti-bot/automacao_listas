@@ -761,9 +761,9 @@ def aba_gerador_negocios_robos():
 
         col3, col4 = st.columns(2)
         with col3:
-            nicho_principal = st.text_input("Nicho Principal (ex: AUTO, MED, EMPR)", value="AUTO", key="nicho_handoff", placeholder="Ex: AUTO")
+            nicho_principal = st.text_input("Nicho Principal (ex: AUTO, MED, EMPR)", value="", key="nicho_handoff", placeholder="Ex: EMPR")
         with col4:
-            sufixo_localidade = st.text_input("Sufixo de Localidade (opcional, ex: CG, MS)", value="", key="sufixo_handoff", placeholder="Ex: CG")
+            sufixo_localidade = st.text_input("Sufixo de Localidade (opcional, ex: CG, MS)", value="", key="sufixo_handoff", placeholder="CG, MS, MT")
         
         if st.button("Gerar Arquivos de Negócios", key="btn_gerar_handoff"):
             # A lógica de geração usará `generated_files` do session_state
@@ -1410,7 +1410,7 @@ def aba_automacao_pessoas_agendor():
         col_descricao = None
         
         if desc_mode == "Valor Fixo":
-            default_descricao = st.text_area("Digite a Descrição Padrão", value="", help="Esta descrição será usada para todos os leads.", placeholder="Ex: Lead quente, ligar asap")
+            default_descricao = st.text_area("Digite a Descrição Padrão", value="", help="Esta descrição será usada para todos os leads.", placeholder="Razão Social ou Nome Fantasia")
         else:
             col_descricao = st.selectbox("Selecione a coluna de Descrição do arquivo:", options=[""] + df_leads_cols, key="col_descricao_select")
 
