@@ -849,11 +849,85 @@ def aba_gerador_negocios_robos():
                             break
 
                 # 3. Aplica a Configuração se detectou
-                if detected_consultant:
                     st.session_state["dist_mode_negocios"] = "Distribuir APENAS para..."
                     st.session_state["include_negocios"] = [detected_consultant]
                     st.toast(f"🤖 Consultor Detectado: {detected_consultant}\nFonte: {detection_source}", icon="🕵️")
                     st.success(f"Configuração ajustada automaticamente para o consultor detectado: **{detected_consultant}**")
+                
+                # --- Lógica de Detecção de Nicho e Localidade (Por Nome do Arquivo) ---
+                detected_niche = None
+                detected_suffix = None
+                
+                # Mapeamentos (Normalizados para caixa alta)
+                NICHO_MAP = {
+                    "MEDICOS": "MED",
+                    "EMPRESARIOS": "EMPR",
+                    "ADVOGADOS": "ADV",
+                    "ENGENHEIROS": "ENG",
+                    "ARQUITETOS": "ARQ",
+                    "ARQUITETO": "ARQ"
+                }
+
+                LOCALIDADE_MAP = {
+                    "CAMPO GRANDE": "CG",
+                    "DOURADOS": "DDOS",
+                    "MATO GROSSO DO SUL": "MS",
+                    "MATO GROSSO": "MT",
+                    "MS": "MS",
+                    "MT": "MT",
+                    "CG": "CG",
+                    "DDOS": "DDOS"
+                }
+
+                # Normaliza o nome do arquivo para facilitar a busca (caixa alta, sem extensão)
+                fname_clean = uploaded_file.name.upper().replace(".XLSX", "").replace(".CSV", "").replace("-", "_")
+                fname_parts = fname_clean.split("_")
+
+                # Busca por Nicho
+                for part in fname_parts:
+                    if part in NICHO_MAP:
+                        detected_niche = NICHO_MAP[part]
+                        break
+                
+                # Busca por Localidade (Sufixo)
+                # Prioridade: Correspondência Exata nos mapping values (CG, MS, MT, DDOS) ou Keys
+                # Estratégia: Iterar pelas partes e verificar se bate com chave ou valor do mapa
+                
+                # Flatten values for direct check
+                valid_suffixes = set(LOCALIDADE_MAP.values())
+                
+                for part in fname_parts:
+                    # Check 1: Se a parte já é um sufixo válido (ex: 'CG', 'MS')
+                    if part in valid_suffixes:
+                        detected_suffix = part
+                        break
+                    # Check 2: Se a parte é um nome completo (ex: 'DOURADOS')
+                    if part in LOCALIDADE_MAP:
+                        detected_suffix = LOCALIDADE_MAP[part]
+                        break
+                
+                # Se não achou por partes simples, tenta encontrar frases compostas (ex: MATO GROSSO)
+                if not detected_suffix:
+                     for loc_name, loc_suffix in LOCALIDADE_MAP.items():
+                         if loc_name in fname_clean and " " in loc_name: # Apenas compostos para não dar falso positivo em simples já testados
+                             detected_suffix = loc_suffix
+                             break
+
+                # Atualiza Session State se detectado
+                updates_msg = []
+                if detected_niche:
+                    st.session_state["nicho_handoff"] = detected_niche # Atualiza o widget key
+                    st.session_state["nicho_upload"] = detected_niche # Atualiza o widget key (garantia)
+                    updates_msg.append(f"Nicho: {detected_niche}")
+                
+                if detected_suffix:
+                    st.session_state["sufixo_handoff"] = detected_suffix # Atualiza o widget key
+                    st.session_state["sufixo_upload"] = detected_suffix # Atualiza o widget key (garantia)
+                    updates_msg.append(f"Sufixo: {detected_suffix}")
+
+                if updates_msg:
+                    st.toast(f"📍 Detectado no Arquivo:\n" + "\n".join(updates_msg), icon="🏷️")
+                    st.info(f"Campos preenchidos automaticamente: **{' | '.join(updates_msg)}**")
 
             # --- Mapeamento de Colunas ---
             st.subheader("1. Mapeamento de Colunas")
