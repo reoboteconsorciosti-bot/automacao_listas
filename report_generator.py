@@ -889,23 +889,61 @@ def aba_gerador_negocios_robos():
                 
                 # Mapeamentos (Normalizados para caixa alta)
                 NICHO_MAP = {
-                    "MEDICOS": "MED",
-                    "EMPRESARIOS": "EMPR",
-                    "ADVOGADOS": "ADV",
-                    "ENGENHEIROS": "ENG",
-                    "ARQUITETOS": "ARQ",
-                    "ARQUITETO": "ARQ"
+                    "MEDICOS": "MED", "MEDICO": "MED",
+                    "EMPRESARIOS": "EMPR", "EMPRESARIO": "EMPR",
+                    "ADVOGADOS": "ADV", "ADVOGADO": "ADV",
+                    "ENGENHEIROS": "ENG", "ENGENHEIRO": "ENG",
+                    "ARQUITETOS": "ARQ", "ARQUITETO": "ARQ",
+                    "VETERINARIOS": "VET", "VETERINARIO": "VET",
+                    "DENTISTAS": "DENT", "DENTISTA": "DENT", "ODONTOLOGOS": "DENT", "ODONTOLOGO": "DENT",
+                    "PSICOLOGOS": "PSI", "PSICOLOGO": "PSI",
+                    "FISIOTERAPEUTAS": "FISIO", "FISIOTERAPEUTA": "FISIO",
+                    "NUTRICIONISTAS": "NUTRI", "NUTRICIONISTA": "NUTRI",
+                    "CONTADORES": "CONT", "CONTADOR": "CONT",
+                    "AGRONOMOS": "AGRO", "AGRONOMO": "AGRO",
+                    "RURAIS": "RURAL", "RURAL": "RURAL", "PRODUTORES": "RURAL",
+                    "FUNCIONARIOS": "PUB", "SERVIDORES": "PUB",
+                    "PROFESSORES": "PROF", "PROFESSOR": "PROF",
+                    "POLICIAIS": "POL", "POLICIAL": "POL",
+                    "ENFERMEIROS": "ENF", "ENFERMEIRO": "ENF",
+                    "CORRETORES": "CORR", "CORRETOR": "CORR"
                 }
 
                 LOCALIDADE_MAP = {
-                    "CAMPO GRANDE": "CG",
+                    # Capitais e Estados Principais
+                    "CAMPO GRANDE": "CG", "CUIABA": "CBA", "GOIANIA": "GYN", "SAO PAULO": "SP", "CURITIBA": "CWB", "BRASILIA": "BSB",
+                    
+                    # Mato Grosso do Sul (MS)
                     "DOURADOS": "DDOS",
-                    "MATO GROSSO DO SUL": "MS",
-                    "MATO GROSSO": "MT",
-                    "MS": "MS",
-                    "MT": "MT",
-                    "CG": "CG",
-                    "DDOS": "DDOS"
+                    "TRES LAGOAS": "TL",
+                    "PONTA PORA": "PP",
+                    "CORUMBA": "COR",
+                    "NAVIRAI": "NAV",
+                    "NOVA ANDRADINA": "NA",
+                    "SIDROLANDIA": "SID",
+                    "MARACAJU": "MAR",
+                    "COXIM": "COX",
+                    "AMAMBAI": "AMA",
+                    "RIO BRILHANTE": "RB",
+                    "BONITO": "BON",
+                    "CHAPADAO DO SUL": "CHAP", "CHAPADAO": "CHAP",
+                    
+                    # Mato Grosso (MT)
+                    "SINOP": "SIN",
+                    "RONDONOPOLIS": "ROO",
+                    "PRIMAVERA DO LESTE": "PVA", "PRIMAVERA": "PVA",
+                    "SORRISO": "SOR",
+                    "TANGARA DA SERRA": "TGA", "TANGARA": "TGA",
+                    "LUCAS DO RIO VERDE": "LRV",
+                    
+                    # Estados (Siglas)
+                    "MATO GROSSO DO SUL": "MS", "MATO GROSSO": "MT",
+                    "PARANA": "PR", "SANTA CATARINA": "SC", "RIO GRANDE DO SUL": "RS",
+                    "MINAS GERAIS": "MG", "GOIAS": "GO", "DISTRITO FEDERAL": "DF",
+                    
+                    # Siglas Diretas (Preservação)
+                    "MS": "MS", "MT": "MT", "CG": "CG", "DDOS": "DDOS", "SP": "SP",
+                    "PR": "PR", "SC": "SC", "RS": "RS", "MG": "MG", "GO": "GO", "DF": "DF"
                 }
 
                 # Normaliza o nome do arquivo para facilitar a busca (caixa alta, sem extensão)
