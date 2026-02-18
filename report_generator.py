@@ -1452,19 +1452,25 @@ def aba_automacao_pessoas_agendor():
             
             # --- Nova Lógica: Extração de Cargo/Nicho do Nome do Arquivo ---
             # Ex: EMPRESARIOS_MS_RENATA_2026 -> Cargo: "EMPRESARIOS MS", Nicho: "EMPRESARIOS MS"
+            # Ex: MEDICOS DOURADOS KAREN - 09-02-2026 -> Cargo: "MEDICOS DOURADOS", Nicho: "MEDICOS DOURADOS"
             # Lógica: Pegar tudo O QUE VEM ANTES do primeiro consultor encontrado.
             
             metadata_prefix = ""
             if detected_consultants:
+                import re
                 # Encontrar onde o primeiro consultor aparece no nome do arquivo original (case insensitive search)
                 fname_original = uploaded_file.name
-                first_match_idx = float('inf')
+                # Remove extensão
+                fname_no_ext = fname_original.rsplit('.', 1)[0]
                 
-                # Normaliza para busca segura
-                fname_lower = fname_original.lower().replace('-', '_')
+                # Normaliza para busca segura (apenas lowercase)
+                fname_lower = normalize_txt(fname_no_ext) 
                 
-                # Estratégia: Split por underscore e ver qual pedaço dá match com consultor
-                parts = fname_lower.split('_')
+                # Estratégia: Split por regex (espaço, underscore, hífen)
+                # re.split retorna a lista de partes
+                parts = re.split(r'[ _-]+', fname_lower)
+                # Filtra tokens vazios
+                parts = [p for p in parts if p]
                 
                 # Identificar índice do pedaço que é um consultor
                 found_part_idx = -1
@@ -1474,16 +1480,20 @@ def aba_automacao_pessoas_agendor():
                     p_norm = normalize_txt(part)
                     for c in detected_consultants:
                         c_norm = normalize_txt(c).split()[0] # Primeiro nome do consultor
-                        if c_norm in p_norm and len(p_norm) > 3:
+                        
+                        # Match exato do token com o primeiro nome do consultor
+                        if p_norm == c_norm:
                             found_part_idx = i
                             break
+                        # Ou se o nome do consultor for composto (ex: "Raphael Lucas") e o token for "raphael"
+                        
                     if found_part_idx != -1:
                         break
                 
                 # Se achou um consultor nos pedaços e não é o primeiro (tem prefixo antes)
                 if found_part_idx > 0:
                     prefix_parts = parts[:found_part_idx]
-                    # Reconstrói texto, limpando e upper
+                    # Reconstrói texto com espaços e uppercase
                     metadata_prefix = " ".join(prefix_parts).upper().strip()
             
             # Remove duplicatas preservando ordem (Consultores)
