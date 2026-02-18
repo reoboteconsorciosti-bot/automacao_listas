@@ -1599,6 +1599,10 @@ def aba_automacao_pessoas_agendor():
         # Mapeia as colunas do arquivo para minúsculas para busca case-insensitive
         df_cols_lower_map = {c.lower(): c for c in reversed(df_leads_cols)}
 
+        MANDATORY_FIELDS = ["NOME", "Whats"]
+        is_mapping_valid = True
+        missing_fields = []
+
         for col in expected_cols_agendor:
             default_selection = ''
             
@@ -1628,12 +1632,36 @@ def aba_automacao_pessoas_agendor():
             except ValueError:
                 default_index = 0
 
+            # Validação Visual
+            is_mandatory = col in MANDATORY_FIELDS
+            label_suffix = " *" if is_mandatory else ""
+            help_text = f"Selecione a coluna correspondente a '{col}'."
+            
+            # Se for obrigatório e não tiver valor padrão, ou se usuário desmarcou
+            current_val = st.session_state.get(f"map_agendor_{col}")
+            # Se não estiver no session state, usa o default_index para checar "vazio"
+            is_empty = (default_index == 0) if current_val is None else (current_val == '')
+
+            if is_mandatory and is_empty:
+                help_text += " (CAMPO OBRIGATÓRIO)"
+                st.markdown(f":red[**{col}{label_suffix} (Obrigatório)**]")
+            else:
+                st.write(f"**{col}{label_suffix}**")
+
             selected_col = st.selectbox(
-                f"Coluna para '{col}'",
+                f"Coluna no arquivo",
                 options=[''] + df_leads_cols,
                 index=default_index,
-                key=f"map_agendor_{col}"
+                key=f"map_agendor_{col}",
+                help=help_text,
+                label_visibility="collapsed" # Esconde label padrão para usar o customizado acima
             )
+            
+            if is_mandatory and not selected_col:
+                st.caption(f":red[⚠️ Selecione uma coluna para '{col}']")
+                is_mapping_valid = False
+                missing_fields.append(col)
+            
             user_col_mapping[col] = selected_col
 
         # Lógica para input de leads por consultor e divisão forçada
@@ -1647,15 +1675,15 @@ def aba_automacao_pessoas_agendor():
         else:
             leads_por_consultor = st.number_input("Número de leads por consultor", min_value=1, value=50)
 
-        if st.button("Gerar Arquivo 'Pessoas'"):
+        if not is_mapping_valid:
+            st.error(f"⛔ Ação Bloqueada: Por favor mapeie as colunas obrigatórias: **{', '.join(missing_fields)}**")
+
+        if st.button("Gerar Arquivo 'Pessoas'", disabled=not is_mapping_valid):
             # Use st.status for a cleaner, collapsible log
             with st.status("Iniciando processamento...", expanded=True) as status:
                 try:
                     status.write("Validando colunas...")
-                    # Validate NOME mapping before proceeding
-                    if not user_col_mapping["NOME"]:
-                        st.warning("A coluna 'NOME' é obrigatória para a distribuição de leads.")
-                        return
+
 
                     # Apply mapping and rename DataFrame
                     df_leads_mapped = df_raw_leads.copy()
