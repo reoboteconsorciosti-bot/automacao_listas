@@ -1494,7 +1494,38 @@ def aba_automacao_pessoas_agendor():
                 if found_part_idx > 0:
                     prefix_parts = parts[:found_part_idx]
                     # Reconstrói texto com espaços e uppercase
-                    metadata_prefix = " ".join(prefix_parts).upper().strip()
+                    raw_prefix = " ".join(prefix_parts).upper().strip()
+                    metadata_prefix = raw_prefix # Preserva original para Nicho
+
+                    # Função Auxiliar de Singularização (Escopo Local)
+                    def singularize_role_name(text):
+                        words = text.split()
+                        singular_words = []
+                        for word in words:
+                            # Regras básicas de singularização PT-BR (Heurística)
+                            if word.endswith('ORES'):
+                                singular_words.append(word[:-2]) # CORRETORES -> CORRETOR
+                            elif word.endswith('OES'):
+                                singular_words.append(word[:-3] + 'AO') # EXCECOES -> EXCECAO (Simples) - Ajustar se necessário
+                            elif word.endswith('AIS'):
+                                singular_words.append(word[:-2] + 'L') # RURAIS -> RURAL
+                            elif word.endswith('EIS'):
+                                singular_words.append(word[:-2] + 'L') # MOVEIS -> MOVEL
+                            elif word.endswith('IS'):
+                                singular_words.append(word[:-1] + 'L') # CIVIL -> CIVIL (Mantem ou ajusta) - PERFIS -> PERFIL
+                            elif word.endswith('NS'):
+                                singular_words.append(word[:-1]) # JOVENS -> JOVE(M) - Ajuste manual melhor se precisar. 
+                            elif word.endswith('OS'):
+                                singular_words.append(word[:-1]) # MEDICOS -> MEDICO
+                            elif word.endswith('AS'):
+                                singular_words.append(word[:-1]) # DENTISTAS -> DENTISTA
+                            elif word.endswith('S') and not word.endswith('SS'): # Avoid MASS -> MAS
+                                singular_words.append(word[:-1])
+                            else:
+                                singular_words.append(word)
+                        return " ".join(singular_words)
+
+                    metadata_prefix_singular = singularize_role_name(raw_prefix)
             
             # Remove duplicatas preservando ordem (Consultores)
             detected_consultants = sorted(list(set(detected_consultants)))
@@ -1507,9 +1538,10 @@ def aba_automacao_pessoas_agendor():
                 st.session_state["include_agendor"] = detected_consultants
             
             if metadata_prefix:
-                detected_msg.append(f"Cargo/Nicho: {metadata_prefix}")
+                detected_msg.append(f"Cargo (Singular): {metadata_prefix_singular}")
+                detected_msg.append(f"Nicho (Original): {metadata_prefix}")
                 # Atualizar Session State dos campos de Texto
-                st.session_state["cargo_agendor"] = metadata_prefix
+                st.session_state["cargo_agendor"] = metadata_prefix_singular
                 st.session_state["nicho_agendor_input"] = metadata_prefix
                 
             if detected_msg:
