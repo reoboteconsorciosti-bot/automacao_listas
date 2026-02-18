@@ -1415,6 +1415,11 @@ def aba_automacao_pessoas_agendor():
         if st.session_state.get('last_processed_filename') != uploaded_file.name:
             st.session_state.last_processed_filename = uploaded_file.name
             
+            # Limpa campos de Cargo e Nicho para evitar valores padrão antigos incorretos
+            st.session_state["cargo_agendor"] = ""
+            st.session_state["nicho_agendor_input"] = ""
+
+            
             # Carregar consultores para busca
             consultores_db = carregar_consultores()
             consultores_nomes = sorted([c["consultor"] for c in consultores_db])
@@ -1528,7 +1533,7 @@ def aba_automacao_pessoas_agendor():
         st.subheader("Configurações Adicionais para Agendor")
         # Inicializa session_state se necessário para Cargo Padrão
         if "cargo_agendor" not in st.session_state:
-            st.session_state.cargo_agendor = "Lead Automovel"
+            st.session_state.cargo_agendor = "" # Default vazio para forçar detecção ou input manual
         
         default_cargo = st.text_input("Cargo Padrão", key="cargo_agendor", help="Cargo a ser atribuído aos leads no Agendor.", placeholder="Ex: Lead Automovel")
         
@@ -1569,7 +1574,7 @@ def aba_automacao_pessoas_agendor():
             
             
         if "nicho_agendor_input" not in st.session_state:
-             st.session_state.nicho_agendor_input = "GERAL"
+             st.session_state.nicho_agendor_input = "" # Default vazio
 
         nicho_valor = st.text_input("Nicho (para nome do arquivo)", key="nicho_agendor_input", help="Valor do nicho para o nome do arquivo de exportação (ex: AUTOMOVEIS, IMOVEIS).", placeholder="Ex: AUTOMOVEIS")
 
