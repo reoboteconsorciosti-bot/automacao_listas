@@ -1099,11 +1099,12 @@ def aba_gerador_negocios_robos():
                     sufixo_localidade_upload,
                     df_raw=df_raw_leads, # Pass the raw DataFrame
                     col_mapping={"Nome": nome_col, "WhatsApp": whats_col}, # Pass the column mapping
-                    effective_consultores=effective_consultores # Pass the effective consultants
+                    effective_consultores=effective_consultores, # Pass the effective consultants
+                    gerar_lista_txt=gerar_lista_txt # Pass the checkbox value
                 )
 
 
-def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nicho_principal, sufixo_localidade, source_data=None, df_raw=None, col_mapping=None, effective_consultores=None):
+def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nicho_principal, sufixo_localidade, source_data=None, df_raw=None, col_mapping=None, effective_consultores=None, gerar_lista_txt=False):
     """Função unificada para gerar arquivos de negócios."""
     with st.spinner("Gerando arquivos de Negócios... Por favor, aguarde."):
         all_generated_files = {}
