@@ -148,12 +148,12 @@ def determine_localidade(user_col_mapping, df_lote, default="CG"):
     return default
 
 
-def generate_excel_buffer(df, **kwargs):
+def generate_excel_buffer(data, **kwargs):
     """
-    Gera um buffer Excel em memória para um DataFrame.
-    Aceita kwargs que são passados para to_excel (ex: sheet_name).
-    O índice é False por padrão, mas pode ser sobrescrito via kwargs se necessário (embora implementado aqui fixo como index=False na chamada, poderiamos mudar).
-    Na verdade, vamos garantir index=False e passar o resto.
+    Gera um buffer Excel em memória.
+    Args:
+        data: Pode ser um pd.DataFrame (gera uma aba) ou um dict {'NomeAba': df, ...} (gera várias abas).
+        kwargs: Argumentos extras passados para to_excel (ex: sheet_name se for single df).
     """
     output = io.BytesIO()
     try:
@@ -161,7 +161,17 @@ def generate_excel_buffer(df, **kwargs):
         index_arg = kwargs.pop('index', False)
         
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, index=index_arg, **kwargs)
+            if isinstance(data, pd.DataFrame):
+                # Caso clássico: um único DataFrame
+                # Se sheet_name não for passado, o pandas usa 'Sheet1' por padrão
+                data.to_excel(writer, index=index_arg, **kwargs)
+            elif isinstance(data, dict):
+                # Caso novo: Dicionário de DataFrames
+                for sheet_name, df in data.items():
+                    # Trunca nome da aba se necessário (Excel limita a 31 chars)
+                    safe_sheet_name = str(sheet_name)[:31]
+                    df.to_excel(writer, sheet_name=safe_sheet_name, index=index_arg)
+            
         output.seek(0)
         return output
     except Exception:

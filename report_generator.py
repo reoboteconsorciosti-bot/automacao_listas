@@ -1268,7 +1268,7 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                 colunas_negocios = [
                     "Título do negócio", "Empresa relacionada", "Pessoa relacionada",
                     "Usuário responsável", "Data de início", "Data de conclusão",
-                    "Valor Total", "Funil", "Etapa", "Status", "Motivo de perda",
+                    "Valor Total", "Funil", "Etapa", "Motivo de perda",
                     "Descrição do motivo de perda", "Ranking", "Descrição", "Produtos e Serviços",
                     "Status Telefone"
                 ]
@@ -1319,7 +1319,6 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                                 "Valor Total": "",
                                 "Funil": "Funil de Vendas",
                                 "Etapa": "Prospecção",
-                                "Status": "Em andamento",
                                 "Motivo de perda": "",
                                 "Descrição do motivo de perda": "",
                                 "Ranking": "",
@@ -1331,7 +1330,39 @@ def processar_e_gerar_negocios(negocios_por_consultor, start_date_negocios, nich
                         
                         df_final_negocios = pd.DataFrame(dados_negocios, columns=colunas_negocios)
 
-                        output_excel_negocios = generate_excel_buffer(df_final_negocios)
+                        # Preparação do conteúdo para o Excel (Multiplas Abas ou Única)
+                        excel_payload = df_final_negocios # Default: Só o DF principal
+                        excel_kwargs = {} # Kwargs extras se for single df (como sheet_name implícito)
+                        
+                        # --- Lógica de Geração da Lista de Telefones ---
+                        if gerar_lista_txt: 
+                            # Extrair telefones únicos e válidos deste lote
+                            lista_telefones_lote = []
+                            seen_phones = set()
+                            
+                            for row in dados_negocios:
+                                # O telefone validado foi salvo na coluna "Data de conclusão" (hack legado do usuário)
+                                phone_val = row.get("Data de conclusão") 
+                                
+                                if phone_val and str(phone_val).strip():
+                                    p_clean = str(phone_val).strip()
+                                    # Validação extra para garantir que parece um telefone
+                                    if len(p_clean) >= 10 and p_clean not in seen_phones:
+                                        lista_telefones_lote.append(p_clean)
+                                        seen_phones.add(p_clean)
+                            
+                            df_telefones = pd.DataFrame(lista_telefones_lote, columns=["Telefones para Disparo"])
+                            
+                            # Cria o dict para mult-sheet
+                            # Sheet 1: Negócios (Nome 'Negocios' para ser safe/curto)
+                            # Sheet 2: Lista Transmissão
+                            excel_payload = {
+                                "Negocios": df_final_negocios,
+                                "Lista Transmissão": df_telefones
+                            }
+                            
+                        # Gera o buffer (Utils já suporta dict)
+                        output_excel_negocios = generate_excel_buffer(excel_payload, **excel_kwargs)
 
                         primeiro_nome_consultor = consultor.split(' ')[0].upper()
                         nome_arquivo_negocios = f"NEGOCIOS_{primeiro_nome_consultor}_{nicho_principal.upper()}"
@@ -1592,6 +1623,36 @@ def aba_automacao_pessoas_agendor():
         
         default_cargo = st.text_input("Cargo Padrão", key="cargo_agendor", help="Cargo a ser atribuído aos leads no Agendor.", placeholder="Ex: Lead Automovel")
         
+        # --- Lógica de Auto-Seleção para Descrição e UF ---
+        # Tenta validar se existem colunas para Razão Social/Fantasia e UF
+        # Se existirem, muda o default do toggle para "Usar Coluna" e pre-seleciona
+        
+        # 1. Descrição
+        possible_desc_cols = ["Razao Social", "Razão Social", "Nome Fantasia", "Fantasia", "Apelido", "Empresa"]
+        best_desc_col = best_match_column(df_leads_cols, possible_desc_cols, min_score=60)
+        
+        default_desc_mode = "Valor Fixo"
+        default_desc_index = 0
+        if best_desc_col:
+            default_desc_mode = "Usar Coluna"
+            try:
+                default_desc_index = df_leads_cols.index(best_desc_col) + 1
+            except ValueError:
+                default_desc_index = 0
+
+        # 2. UF
+        possible_uf_cols = ["UF", "Estado", "State", "Sigla", "Federacao"]
+        best_uf_col = best_match_column(df_leads_cols, possible_uf_cols, min_score=70) # Score maior para UF (siglas curtas podem confundir)
+        
+        default_uf_mode = "Valor Fixo"
+        default_uf_index = 0
+        if best_uf_col:
+            default_uf_mode = "Usar Coluna"
+            try:
+                default_uf_index = df_leads_cols.index(best_uf_col) + 1
+            except ValueError:
+                default_uf_index = 0
+
         # --- Helper para criar Toggle estilo "Segmented Control" (Pílula) ---
         def create_toggle(label, options, default, key):
             try:
@@ -1605,7 +1666,7 @@ def aba_automacao_pessoas_agendor():
 
         # Toggle for Descrição - Estilo Pílula Horizontal
         st.write("**Configuração da Descrição**")
-        desc_mode = create_toggle("Fonte da Descrição:", ["Valor Fixo", "Usar Coluna"], default="Valor Fixo", key="desc_mode_toggle")
+        desc_mode = create_toggle("Fonte da Descrição:", ["Valor Fixo", "Usar Coluna"], default=default_desc_mode, key="desc_mode_toggle")
         
         default_descricao = ""
         col_descricao = None
@@ -1613,11 +1674,16 @@ def aba_automacao_pessoas_agendor():
         if desc_mode == "Valor Fixo":
             default_descricao = st.text_area("Digite a Descrição Padrão", value="", help="Esta descrição será usada para todos os leads.", placeholder="Razão Social ou Nome Fantasia")
         else:
-            col_descricao = st.selectbox("Selecione a coluna de Descrição do arquivo:", options=[""] + df_leads_cols, key="col_descricao_select")
+            col_descricao = st.selectbox(
+                "Selecione a coluna de Descrição do arquivo:", 
+                options=[""] + df_leads_cols, 
+                index=default_desc_index if default_desc_mode == "Usar Coluna" else 0,
+                key="col_descricao_select"
+            )
 
         # Toggle for UF - Estilo Pílula Horizontal
         st.write("**Configuração da UF (Estado)**")
-        uf_mode = create_toggle("Fonte da UF:", ["Valor Fixo", "Usar Coluna"], default="Valor Fixo", key="uf_mode_toggle")
+        uf_mode = create_toggle("Fonte da UF:", ["Valor Fixo", "Usar Coluna"], default=default_uf_mode, key="uf_mode_toggle")
         
         default_uf = "MS"
         col_uf = None
@@ -1625,7 +1691,12 @@ def aba_automacao_pessoas_agendor():
         if uf_mode == "Valor Fixo":
             default_uf = st.text_input("Digite a UF Padrão", value="MS", max_chars=2, help="UF padrão para os leads.", placeholder="Ex: MS")
         else:
-            col_uf = st.selectbox("Selecione a coluna de UF do arquivo:", options=[""] + df_leads_cols, key="col_uf_select")
+            col_uf = st.selectbox(
+                "Selecione a coluna de UF do arquivo:", 
+                options=[""] + df_leads_cols, 
+                index=default_uf_index if default_uf_mode == "Usar Coluna" else 0,
+                key="col_uf_select"
+            )
             
             
         if "nicho_agendor_input" not in st.session_state:
@@ -1860,8 +1931,8 @@ def aba_automacao_pessoas_agendor():
                             linha = {col: "" for col in colunas_output}
                             linha.update({
                                 "Nome": row.get("NOME", ""),
-                                # Fix: Populate Empresa with Fantasia or Razao Social
-                                "Empresa": row.get("Fantasia") or row.get("Razao Social") or "",
+                                # Fix: Populate Empresa with empty string as requested
+                                "Empresa": "",
                                 "Cargo": default_cargo,
                                 "Usuário responsável": consultor_formatado,
                                 "Categoria": "Lead",
@@ -2211,8 +2282,12 @@ def aba_automacao_pessoas_agendor():
                     
             else:
                 st.success("🎉 Nenhum erro manual pendente! Todos os problemas eram duplicidades e foram removidos.")
-                if st.button("Gerar Arquivo Limpo (Sem Duplicidades)"):
-                     # Apenas Safe
+                # Opção de incluir lista de telefones (Aba Extra)
+                gerar_lista_txt = st.checkbox("Incluir aba com 'Lista de Telefones' no arquivo Excel?", value=True, help="Gera uma segunda aba na planilha com os números limpos para disparo.")
+
+                if st.button("Gerar Arquivos de Distribuição (Negócios)"):
+                    processing_logs = [] # Reset logs
+                    all_generated_files = {} # Reset files
                     df_safe = st.session_state.recon_df_safe
                     output_buffer = generate_excel_buffer(df_safe, sheet_name='Pessoas')
                     
