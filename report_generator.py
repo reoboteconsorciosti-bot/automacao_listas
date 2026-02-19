@@ -1501,7 +1501,20 @@ def aba_automacao_pessoas_agendor():
                     def singularize_role_name(text):
                         words = text.split()
                         singular_words = []
+                        
+                        # Lista de Exceções de Localidades (Plural aparente que não deve mudar)
+                        EXCEPTIONS = [
+                            "DOURADOS", "TRES LAGOAS", "GOIAS", "MINAS GERAIS", "AMAZONAS", 
+                            "TOCANTINS", "LONDRINA", "CAMPINAS", "GUARULHOS", "SANTOS", 
+                            "PELOTAS", "CAXIAS", "PALMAS", "ALAGOAS", "VASSOURAS", "POCOS DE CALDAS"
+                        ]
+                        
                         for word in words:
+                            # Se for exceção, mantem original
+                            if word.upper() in [x.upper() for x in EXCEPTIONS] or word.upper() in ["DOS", "DAS"]:
+                                singular_words.append(word)
+                                continue
+                                
                             # Regras básicas de singularização PT-BR (Heurística)
                             if word.endswith('ORES'):
                                 singular_words.append(word[:-2]) # CORRETORES -> CORRETOR
