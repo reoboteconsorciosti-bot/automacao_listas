@@ -1074,6 +1074,9 @@ def aba_gerador_negocios_robos():
             with col4:
                 sufixo_localidade_upload = st.text_input("Sufixo de Localidade (opcional, ex: CG, MS)", value="", key="sufixo_upload", placeholder="Ex: CG, MS, MT")
 
+            # Checkbox para lista de telefones (Novo)
+            gerar_lista_txt = st.checkbox("Incluir aba com 'Lista de Telefones' no arquivo Excel?", value=True, help="Gera uma segunda aba na planilha com os números limpos para disparo.", key="chk_lista_txt_negocios")
+
             generate_button_disabled = not nome_col or not whats_col
             if generate_button_disabled:
                 st.warning("Mapeamento de colunas 'Nome' e 'WhatsApp' é obrigatório para gerar os arquivos.")
