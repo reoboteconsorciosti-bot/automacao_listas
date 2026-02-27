@@ -7,17 +7,16 @@ from utils import best_match_column
 from utils import format_phone_for_whatsapp_business
 
 # Ordem final das colunas de saída
-# Ordem final das colunas de saída
 FIXED_OUTPUT_ORDER = [
     "Razao", "Logradouro", "Numero", "Bairro", "Cidade", "UF",
-    "NOME", "Whats", "CEL"
+    "NOME", "Whats", "CEL", "CEL2"
 ]
 
 # Colunas para extração completa (Superset de tudo que queremos buscar)
 FULL_EXTRACTION_COLS = [
     "Razao", "Logradouro", "Numero", "Bairro", "Cidade", "UF", "CEP", "CNPJ",
     "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2",
-    "NOME", "Whats", "CEL", "DDD", "FONE"
+    "NOME", "Whats", "CEL", "CEL2", "DDD", "FONE"
 ]
 
 def normalize_colname(name: Any) -> str:
@@ -116,6 +115,7 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
         "CNPJ": ["CNPJ", "CPF/CNPJ"],
         "Whats": ["Whats", "WhatsApp", "Telefone", "Celular", "Contato", "POSSUI-WHATSAPP"],
         "CEL": ["CEL", "Celular", "Telefone", "Whats", "WhatsApp"],
+        "CEL2": ["CEL2", "Celular 2", "Telefone 2", "Whats 2"],
         "DDD": ["DDD", "TELEFONE_DDD", "FONE_DDD"],
         "FONE": ["FONE", "TELEFONE_NUMERO", "FONE_NUMERO", "NUMERO_TELEFONE"]
     }
@@ -187,9 +187,11 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
         df_processed["Whats"] = pd.Series(dtype='object')
     if "CEL" in essential_cols and "CEL" not in df_processed.columns:
         df_processed["CEL"] = pd.Series(dtype='object')
+    if "CEL2" in essential_cols and "CEL2" not in df_processed.columns:
+        df_processed["CEL2"] = pd.Series(dtype='object')
         
     # Garantir que colunas existentes sejam object para evitar warnings
-    for c in ["SOCIO1Celular1", "SOCIO1Celular2", "Whats", "CEL"]:
+    for c in ["SOCIO1Celular1", "SOCIO1Celular2", "Whats", "CEL", "CEL2"]:
         if c in df_processed.columns:
              df_processed[c] = df_processed[c].astype('object')
 
@@ -244,7 +246,7 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
                     if pd.notna(cleaned_phone) and cleaned_phone != "":
                         valid_phones.append(cleaned_phone)
 
-                if len(valid_phones) >= 2: # Já encontrou 2, pode parar de procurar para esta linha
+                if len(valid_phones) >= 3: # Já encontrou 3, pode parar de procurar para esta linha
                     break
             
             # Atribui os telefones encontrados
@@ -259,6 +261,10 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
                     df_processed.at[index, "SOCIO1Celular2"] = valid_phones[1]
                 elif "CEL" in essential_cols: # Para Lemit, CEL é o secundário
                     df_processed.at[index, "CEL"] = valid_phones[1]
+                    
+            if len(valid_phones) > 2:
+                if "CEL2" in essential_cols: # Terceiro telefone
+                    df_processed.at[index, "CEL2"] = valid_phones[2]
 
     else: # Estrutura Assertiva ou desconhecida, usa as colunas diretas
         for index, row in df.iterrows():
@@ -285,6 +291,8 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
         df_processed["Whats"] = df_processed["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
     if "CEL" in essential_cols:
         df_processed["CEL"] = df_processed["CEL"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
+    if "CEL2" in essential_cols:
+        df_processed["CEL2"] = df_processed["CEL2"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
 
     logging.info("DataFrame após formatação final dos celulares (Centralizada):")
     logging.info(df_processed.head())
@@ -406,6 +414,13 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
             df_processed[col] = "" # Preenche com vazio se não existir
 
     final_cols = [col for col in FIXED_OUTPUT_ORDER] # Usa a ordem fixa completa
+    
+    # Adiciona colunas extras dinamicamente (para o recurso de "Adicionar Coluna" manual)
+    ignore_extra = ["SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2", "SOCIO2Nome", "SOCIO2Celular1", "SOCIO2Celular2", "SOCIO1CPF", "SOCIO2CPF", "CEP", "CNPJ", "DDD", "FONE"] + [f"DDD.{i}" for i in range(1, 8)] + [f"FONE.{i}" for i in range(1, 8)] + [f"CEL.{i}" for i in range(1, 8)]
+    for col in df_processed.columns:
+        if col not in final_cols and col not in ignore_extra and not col.startswith("Unnamed"):
+            final_cols.append(col)
+            
     df_final = df_processed[final_cols].copy()
 
     # Ordena o resultado final

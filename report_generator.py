@@ -291,7 +291,8 @@ def aba_higienizacao():
                         "CEP": "CEP",
                         "CNPJ": "CNPJ / CPF",
                         "Whats": "WhatsApp",
-                        "CEL": "Celular / Telefone Secundário"
+                        "CEL": "Celular / Telefone Secundário",
+                        "CEL2": "Celular 2 / Terceiro Contato"
                     }
                     
                     # Vamos iterar sobre FULL_EXTRACTION_COLS para manter a ordem, mas usando apenas as que definimos config
@@ -331,6 +332,29 @@ def aba_higienizacao():
                             manual_mapping[target_col] = selected
                             if selected:
                                 selected_values.append(selected)
+
+                    st.markdown("---")
+                    st.write("**Colunas Extras Customizadas:**")
+                    
+                    if "custom_cols_count" not in st.session_state:
+                         st.session_state.custom_cols_count = 0
+                    
+                    if st.button("➕ Adicionar Coluna Extra"):
+                         st.session_state.custom_cols_count += 1
+                         
+                    for i in range(st.session_state.custom_cols_count):
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            custom_name = st.text_input(f"Nome da Coluna Final (Extra {i+1})", key=f"custom_name_{i}")
+                        with c2:
+                            custom_source = st.selectbox(
+                                "Coluna de Origem na Planilha",
+                                options=[""] + df_cols,
+                                key=f"custom_source_{i}"
+                            )
+                        if custom_name and custom_source:
+                            manual_mapping[custom_name] = custom_source
+                            selected_values.append(custom_source)
 
                     st.info("ℹ️ Certifique-se de não selecionar a mesma coluna de origem para campos diferentes, a menos que seja intencional.")
 
@@ -408,9 +432,16 @@ def aba_higienizacao():
                 st.error("Estrutura não suportada.")
                 return 
 
-            # Chama clean_and_filter_data com FULL_EXTRACTION_COLS para garantir que tentamos pegar tudo que é possível
-            # independentemente de ser Lemit ou Assertiva (pois o mapeamento resolve as diferenças)
-            st.session_state.df_clean, st.session_state.missing_cols, _ = clean_and_filter_data(df_to_process, essential_cols=FULL_EXTRACTION_COLS)
+            # Prepara as colunas essenciais
+            essential_to_pass = FULL_EXTRACTION_COLS.copy()
+            if st.session_state.structure_type == "Manual" and hasattr(st.session_state, 'manual_df') and st.session_state.manual_df is not None:
+                 # Adiciona todas as colunas mapeadas manualmente (incluindo extras) que não formam a base padrão
+                 for c in st.session_state.manual_df.columns:
+                      if c not in essential_to_pass:
+                           essential_to_pass.append(c)
+
+            # Chama clean_and_filter_data com as colunas essenciais expandidas
+            st.session_state.df_clean, st.session_state.missing_cols, _ = clean_and_filter_data(df_to_process, essential_cols=essential_to_pass)
 
             if st.session_state.df_clean.empty:
                 st.warning("Atenção: Após a limpeza e filtragem, nenhum dado restou. Verifique os filtros aplicados e o mapeamento das colunas.")
