@@ -65,35 +65,64 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
     if num_columns == 0:
         return None
 
-    # --- LÓGICA DE LARGURA DE COLUNA REVISADA PARA MELHOR ESPAÇAMENTO ---
-    col_widths = {}
-    # Adicionadas larguras específicas para colunas da higienização
-    TARGET_WIDTHS = {
-        "Razao": 55,       
-        "Logradouro": 45,  
-        "Numero": 12,      
-        "Bairro": 25,      
-        "Cidade": 22,      
-        "UF": 9,           
-        "NOME": 63,        
-        "Whats": 29,       
-        "CEL": 28,         
-        "1º Contato": 22, "2º Contato": 22, "3º Contato": 22, 
-        "Atend. Lig.(S/N)": 33, "Visita Marc.(S/N)": 33
-    }
-    fixed_width_cols = {h: TARGET_WIDTHS[h] for h in headers if h in TARGET_WIDTHS}
-    total_fixed_width = sum(fixed_width_cols.values())
-    variable_cols = [h for h in headers if h not in fixed_width_cols]
-    num_variable_cols = len(variable_cols)
+    # --- LÓGICA DE ESCALONAMENTO E LARGURA DINÂMICA ---
+    # Passo 1: Determinar a largura "ideal" de cada coluna baseada no conteúdo
+    col_ideal_widths = {}
     
-    remaining_width = page_width - total_fixed_width
-    if num_variable_cols > 0:
-        # Garante que a largura da coluna variável não seja negativa
-        variable_col_width = max(10, remaining_width / num_variable_cols)
-        for header in variable_cols:
-            col_widths[header] = variable_col_width
-    for header, width in fixed_width_cols.items():
-        col_widths[header] = width
+    # Define fontes provisoriamente para medir os textos
+    try:
+        pdf.set_font('NotoSans', 'B', 10) # Usa a fonte do cabeçalho
+    except:
+        pdf.set_font('Arial', 'B', 10)
+        
+    for header in headers:
+        # Largura do cabeçalho
+        max_width = pdf.get_string_width(str(header)) + 4 # 4mm de padding interno
+        
+        # Opcional: para colunas de checkbox garantir um tamanho fixo
+        if header in cols_single_checkbox:
+            max_width = max(max_width, pdf.get_string_width("[  ]") + 4)
+        elif header in cols_double_checkbox:
+            max_width = max(max_width, pdf.get_string_width("[  ]   [  ]") + 4)
+            
+        col_ideal_widths[header] = max_width
+
+    # Medir também algumas linhas do corpo para ter uma média (Head 50 ou amostra)
+    try:
+        pdf.set_font('NotoSans', '', 9)
+    except:
+        pdf.set_font('Arial', '', 9)
+        
+    for _, row in df.head(50).iterrows(): # Amostra para não demorar muito em dfs gigantes
+        for header in headers:
+            if header not in cols_single_checkbox and header not in cols_double_checkbox:
+                cell_text = str(row.get(header, ''))
+                w = pdf.get_string_width(cell_text) + 4
+                if w > col_ideal_widths[header]:
+                    col_ideal_widths[header] = w
+                    
+    # Cap limites mínimos e máximos ideais para evitar aberrações
+    for header in headers:
+        w = col_ideal_widths[header]
+        col_ideal_widths[header] = max(15, min(w, 80)) # min 15mm, máx 80mm
+
+    total_ideal_width = sum(col_ideal_widths.values())
+
+    # Passo 2: Calcular Fator de Escala
+    # A folha A4 Landscape tem ~297mm. As margens são subtraídas (page_width)
+    col_widths = {}
+    if total_ideal_width > page_width:
+        # Se ultrapassar, encolhe todas proporcionalmente
+        scale_factor = page_width / total_ideal_width
+        for h in headers:
+            col_widths[h] = col_ideal_widths[h] * scale_factor
+    else:
+        # Se for menor, podemos expandir proporcionalmente para preencher a tela ou deixar como está.
+        # Vamos deixar alinhado preenchendo a tela para ficar bonito
+        scale_factor = page_width / total_ideal_width
+        for h in headers:
+            col_widths[h] = col_ideal_widths[h] * scale_factor
+
     # --- FIM DA LÓGICA DE LARGURA ---
 
     pdf.set_line_width(0.1) # Bordas mais finas
@@ -104,13 +133,26 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
     
     # --- FORMATAÇÃO DO CABEÇALHO ---
     try:
-        pdf.set_font('NotoSans', 'B', 10) # Fonte maior e em negrito
+        
+        # Ajusta dinamicamente a fonte se as colunas ficarem muito exprimidas
+        if scale_factor < 0.7:
+             pdf.set_font('NotoSans', 'B', 8)
+        else:
+             pdf.set_font('NotoSans', 'B', 10) 
     except RuntimeError:
-        pdf.set_font('Arial', 'B', 10)
+         if scale_factor < 0.7:
+             pdf.set_font('Arial', 'B', 8)
+         else:
+             pdf.set_font('Arial', 'B', 10)
 
     for header in headers:
-        # Border 1 no header para voltar as linhas de grade
-        pdf.cell(col_widths.get(header, 10), 8, str(header), 1, 0, 'C', 1) 
+        # Trunca header se não couber mesmo após redimensionar
+        hdr_text = str(header)
+        col_w = col_widths[header]
+        while pdf.get_string_width(hdr_text) > col_w - 2 and len(hdr_text) > 2:
+            hdr_text = hdr_text[:-2] + ".."
+            
+        pdf.cell(col_w, 8, hdr_text, 1, 0, 'C', 1) 
     pdf.ln()
 
     # Reset text color for body
@@ -118,9 +160,19 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
 
     # --- FORMATAÇÃO DO CORPO ---
     try:
-        pdf.set_font('NotoSans', '', 9) # Fonte maior para o corpo
+        if scale_factor < 0.7:
+             pdf.set_font('NotoSans', '', 7)
+        elif scale_factor < 0.85:
+             pdf.set_font('NotoSans', '', 8)
+        else:
+             pdf.set_font('NotoSans', '', 9)
     except RuntimeError:
-        pdf.set_font('Arial', '', 9)
+        if scale_factor < 0.7:
+             pdf.set_font('Arial', '', 7)
+        elif scale_factor < 0.85:
+             pdf.set_font('Arial', '', 8)
+        else:
+             pdf.set_font('Arial', '', 9)
 
     pdf.set_fill_color(225, 235, 250) # Azul bem claro para as linhas alternadas (Zebra Blue)
     fill = False
@@ -136,8 +188,10 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
                 cell_text = str(row.get(header, ''))
             
             col_width = col_widths.get(header, 10)
-            if pdf.get_string_width(cell_text) > col_width - 4: # Mais margem
-                while pdf.get_string_width(cell_text) > col_width - 4:
+            
+            # Truncador agressivo para corpo
+            if pdf.get_string_width(cell_text) > col_width - 2: 
+                while pdf.get_string_width(cell_text) > col_width - 2 and len(cell_text) > 0:
                     cell_text = cell_text[:-1]
 
             pdf.cell(col_width, 6, cell_text, 1, 0, 'L', fill) # Border 1 (com bordas)
