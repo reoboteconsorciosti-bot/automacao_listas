@@ -1767,6 +1767,9 @@ def aba_automacao_pessoas_agendor():
         MANDATORY_FIELDS = ["NOME", "Whats"]
         is_mapping_valid = True
         missing_fields = []
+        
+        # Rastreador de colunas já sugeridas automaticamente para evitar duplicidade visual
+        already_suggested_cols = set()
 
         for col in expected_cols_agendor:
             default_selection = ''
@@ -1774,14 +1777,17 @@ def aba_automacao_pessoas_agendor():
             # A lista de busca prioriza o nome exato da coluna esperada, depois as sugestões
             search_list = [col] + SUGGESTED_COLUMN_NAMES_AGENDOR.get(col, [])
 
+            # APENAS busca nas colunas que ainda não foram sugeridas para outro campo!
+            available_cols_for_search = [c for c in df_leads_cols if c not in already_suggested_cols]
+
             # Usa matching robusto (substring/similarity) para encontrar a melhor coluna
-            default_selection = best_match_column(df_leads_cols, search_list)
+            default_selection = best_match_column(available_cols_for_search, search_list)
 
             # Preferência explícita: se estivermos buscando pela coluna de Whats,
             # prefira qualquer coluna que contenha 'whats' ou 'whatsapp' no nome.
             if col.lower() == 'whats':
                 explicit_whats = None
-                for c in df_leads_cols:
+                for c in available_cols_for_search:
                     cl = c.lower()
                     if 'whats' in cl or 'whatsapp' in cl:
                         explicit_whats = c
@@ -1789,6 +1795,10 @@ def aba_automacao_pessoas_agendor():
                 if explicit_whats:
                     if not default_selection or ('whats' not in default_selection.lower() and 'whatsapp' not in default_selection.lower()):
                         default_selection = explicit_whats
+                        
+            # Se encontrou uma sugestão válida, registra para não ser usada de novo
+            if default_selection:
+                already_suggested_cols.add(default_selection)
             
             # Determina o índice da opção pré-selecionada para o selectbox
             try:
@@ -1842,6 +1852,15 @@ def aba_automacao_pessoas_agendor():
 
         if not is_mapping_valid:
             st.error(f"⛔ Ação Bloqueada: Por favor mapeie as colunas obrigatórias: **{', '.join(missing_fields)}**")
+            
+        # Validação Rígida: Bloqueia geração se o usuário mapeou a mesma coluna do arquivo para dois campos diferentes
+        mapped_values = [col for col in user_col_mapping.values() if col != '']
+        from collections import Counter
+        duplicates = [item for item, count in Counter(mapped_values).items() if count > 1]
+        
+        if duplicates:
+            st.error(f"⛔ Ação Bloqueada: As seguintes colunas de origem foram mapeadas mais de uma vez: **{', '.join(duplicates)}**. Cada coluna da sua planilha só pode ser usada em um único campo.")
+            is_mapping_valid = False
 
         if st.button("Gerar Arquivo 'Pessoas'", disabled=not is_mapping_valid):
             # Use st.status for a cleaner, collapsible log
