@@ -9,14 +9,14 @@ from utils import format_phone_for_whatsapp_business
 # Ordem final das colunas de saída
 FIXED_OUTPUT_ORDER = [
     "Razao", "Logradouro", "Numero", "Bairro", "Cidade", "UF",
-    "NOME", "Whats", "CEL", "CEL2"
+    "NOME", "Whats", "CEL"
 ]
 
 # Colunas para extração completa (Superset de tudo que queremos buscar)
 FULL_EXTRACTION_COLS = [
     "Razao", "Logradouro", "Numero", "Bairro", "Cidade", "UF", "CEP", "CNPJ",
     "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2",
-    "NOME", "Whats", "CEL", "CEL2", "DDD", "FONE"
+    "NOME", "Whats", "CEL", "DDD", "FONE"
 ]
 
 def normalize_colname(name: Any) -> str:
@@ -114,8 +114,7 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
         "UF": ["UF", "ESTADO"],
         "CNPJ": ["CNPJ", "CPF/CNPJ"],
         "Whats": ["Whats", "WhatsApp", "Telefone", "Celular", "Contato", "POSSUI-WHATSAPP"],
-        "CEL": ["CEL", "Celular", "Telefone", "Whats", "WhatsApp"],
-        "CEL2": ["CEL2", "Celular 2", "Telefone 2", "Whats 2"],
+        "CEL": ["CEL", "Celular", "Telefone", "Whats", "WhatsApp", "Celular 2", "Telefone 2", "Whats 2", "CEL2"],
         "DDD": ["DDD", "TELEFONE_DDD", "FONE_DDD"],
         "FONE": ["FONE", "TELEFONE_NUMERO", "FONE_NUMERO", "NUMERO_TELEFONE"]
     }
@@ -187,11 +186,9 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
         df_processed["Whats"] = pd.Series(dtype='object')
     if "CEL" in essential_cols and "CEL" not in df_processed.columns:
         df_processed["CEL"] = pd.Series(dtype='object')
-    if "CEL2" in essential_cols and "CEL2" not in df_processed.columns:
-        df_processed["CEL2"] = pd.Series(dtype='object')
         
     # Garantir que colunas existentes sejam object para evitar warnings
-    for c in ["SOCIO1Celular1", "SOCIO1Celular2", "Whats", "CEL", "CEL2"]:
+    for c in ["SOCIO1Celular1", "SOCIO1Celular2", "Whats", "CEL"]:
         if c in df_processed.columns:
              df_processed[c] = df_processed[c].astype('object')
 
@@ -261,10 +258,6 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
                     df_processed.at[index, "SOCIO1Celular2"] = valid_phones[1]
                 elif "CEL" in essential_cols: # Para Lemit, CEL é o secundário
                     df_processed.at[index, "CEL"] = valid_phones[1]
-                    
-            if len(valid_phones) > 2:
-                if "CEL2" in essential_cols: # Terceiro telefone
-                    df_processed.at[index, "CEL2"] = valid_phones[2]
 
     else: # Estrutura Assertiva ou desconhecida, usa as colunas diretas
         for index, row in df.iterrows():
@@ -291,8 +284,6 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
         df_processed["Whats"] = df_processed["Whats"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
     if "CEL" in essential_cols:
         df_processed["CEL"] = df_processed["CEL"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
-    if "CEL2" in essential_cols:
-        df_processed["CEL2"] = df_processed["CEL2"].apply(lambda x: format_phone_for_whatsapp_business(x, include_country_code=False)[0])
 
     logging.info("DataFrame após formatação final dos celulares (Centralizada):")
     logging.info(df_processed.head())
@@ -443,9 +434,11 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
             continue
         
         # Análise de conteúdo: Trata strings vazias e NaNs como "vazio"
-        # O replace(r'^\s*$', ...) garante que strings com apenas espaços também contem como vazio
-        # Se todos os valores forem nulos, a coluna é candidata à remoção.
-        is_empty = df_final[col].replace(r'^\s*$', np.nan, regex=True).isna().all()
+        # Método seguro e livre de future-warnings para verificar completude
+        if df_final[col].isna().all():
+             is_empty = True
+        else:
+             is_empty = df_final[col].dropna().astype(str).str.strip().eq('').all()
         
         if is_empty:
             cols_to_remove.append(col)

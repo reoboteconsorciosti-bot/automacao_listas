@@ -291,8 +291,7 @@ def aba_higienizacao():
                         "CEP": "CEP",
                         "CNPJ": "CNPJ / CPF",
                         "Whats": "WhatsApp",
-                        "CEL": "Celular / Telefone Secundário",
-                        "CEL2": "Celular 2 / Terceiro Contato"
+                        "CEL": "Celular / Telefone Secundário"
                     }
                     
                     # Vamos iterar sobre FULL_EXTRACTION_COLS para manter a ordem, mas usando apenas as que definimos config
