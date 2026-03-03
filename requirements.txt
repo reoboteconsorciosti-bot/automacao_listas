@@ -27,6 +27,7 @@ pyarrow
 pydeck
 python-dateutil
 requests
+watchdog
 rpds-py
 six
 smmap
