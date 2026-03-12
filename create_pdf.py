@@ -146,11 +146,11 @@ def create_pdf_robust(df, title="Relatório", cols_to_center=None, cols_single_c
              pdf.set_font('Arial', 'B', 10)
 
     for header in headers:
-        # Trunca header se não couber mesmo após redimensionar
+        # Trunca header se não couber mesmo após redimensionar de forma segura
         hdr_text = str(header)
         col_w = col_widths[header]
-        while pdf.get_string_width(hdr_text) > col_w - 2 and len(hdr_text) > 2:
-            hdr_text = hdr_text[:-2] + ".."
+        while pdf.get_string_width(hdr_text) > col_w - 2 and len(hdr_text) > 0:
+            hdr_text = hdr_text[:-1] # Remoção simples letra a letra para NUNCA gerar loop infinito
             
         pdf.cell(col_w, 8, hdr_text, 1, 0, 'C', 1) 
     pdf.ln()

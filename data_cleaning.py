@@ -352,11 +352,11 @@ def clean_and_filter_data(df: pd.DataFrame, essential_cols: List[str]) -> Tuple[
     # --- Unificação de Colunas (SOCIO -> NOME/Whats/CEL) ---
     # Se existirem colunas de SOCIO preenchidas, movemos para NOME/Whats/CEL se estes estiverem vazios
     
-    # Converte strings vazias para NaN para o fillna funcionar
     cols_to_fix = ["NOME", "Whats", "CEL", "SOCIO1Nome", "SOCIO1Celular1", "SOCIO1Celular2"]
     for col in cols_to_fix:
         if col in df_processed.columns:
-            df_processed[col] = df_processed[col].replace(r'^\s*$', np.nan, regex=True)
+            # Replace empty strings/spaces with NaN without triggering downcast warnings
+            df_processed[col] = df_processed[col].mask(df_processed[col].astype(str).str.strip().eq(''))
 
     if "SOCIO1Nome" in df_processed.columns:
         df_processed["NOME"] = df_processed["NOME"].fillna(df_processed["SOCIO1Nome"])
